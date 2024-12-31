@@ -1,260 +1,374 @@
-import { useState } from 'react';
-import { Box, AppBar, Toolbar, IconButton, Typography, Drawer, List, ListItem, ListItemIcon, ListItemText, useTheme, alpha, Button } from '@mui/material';
-import MenuIcon from '@mui/icons-material/Menu';
-import HomeIcon from '@mui/icons-material/Home';
-import SchoolIcon from '@mui/icons-material/School';
-import BookIcon from '@mui/icons-material/Book';
-import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import PeopleIcon from '@mui/icons-material/People';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import SettingsIcon from '@mui/icons-material/Settings';
-import LogoutIcon from '@mui/icons-material/Logout';
+import { useState, useEffect } from 'react';
+import {
+  Box,
+  Drawer,
+  AppBar,
+  Toolbar,
+  List,
+  Typography,
+  Divider,
+  IconButton,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  ListItemButton,
+  Collapse,
+  useTheme,
+  useMediaQuery,
+  Tooltip,
+  alpha,
+} from '@mui/material';
+import {
+  Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
+  Dashboard as DashboardIcon,
+  School as SchoolIcon,
+  Book as BookIcon,
+  AccountCircle as AccountIcon,
+  Schedule as ScheduleIcon,
+  People as PeopleIcon,
+  Settings as SettingsIcon,
+  ExpandLess,
+  ExpandMore,
+  LiveTv as LiveTvIcon,
+  Assignment as AssignmentIcon,
+  Assessment as AssessmentIcon,
+  Notifications as NotificationsIcon,
+  Message as MessageIcon,
+  AdminPanelSettings as AdminIcon,
+  Class as ClassIcon,
+  CalendarMonth as CalendarIcon,
+  Person as PersonIcon,
+} from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { styled } from '@mui/material/styles';
 import { useAuth } from '../../contexts/AuthContext';
+import DashboardHeader from '../dashboard/DashboardHeader';
 
-const drawerWidth = 240;
+const drawerWidth = 280;
 
-const StyledListItem = styled(ListItem)(({ theme, active }) => ({
-  margin: '8px 16px',
-  borderRadius: theme.shape.borderRadius,
-  backgroundColor: active ? alpha(theme.palette.primary.main, 0.1) : 'transparent',
-  color: active ? theme.palette.primary.main : theme.palette.text.primary,
-  '&:hover': {
-    backgroundColor: alpha(theme.palette.primary.main, 0.05),
-  },
-}));
+const menuItems = {
+  student: [
+    {
+      title: 'Home',
+      icon: <DashboardIcon />,
+      path: '/dashboard',
+    },
+    {
+      title: 'Schedule & Classes',
+      icon: <ScheduleIcon />,
+      path: '/schedule',
+      items: [
+        { title: 'My Class Calendar', path: '/schedule/calendar' },
+        { title: 'Join Live Class', path: '/schedule/join' },
+        { title: 'Available Teachers', path: '/schedule/teachers' },
+        { title: 'Request Class', path: '/schedule/request' },
+      ],
+    },
+    {
+      title: 'Learn',
+      icon: <BookIcon />,
+      path: '/learn',
+      items: [
+        { title: 'Arabic Alphabets', path: '/learn/alphabets' },
+        { title: 'Iqra Books', path: '/learn/iqra' },
+        { title: 'Practice', path: '/learn/practice' },
+      ],
+    },
+    {
+      title: 'Profile',
+      icon: <PersonIcon />,
+      path: '/profile',
+      items: [
+        { title: 'Personal Info', path: '/profile/info' },
+        { title: 'Learning Stats', path: '/profile/stats' },
+        { title: 'Settings', path: '/profile/settings' },
+      ],
+    },
+  ],
+  teacher: [
+    {
+      title: 'Home',
+      icon: <DashboardIcon />,
+      path: '/dashboard',
+    },
+    {
+      title: 'Schedule Management',
+      icon: <CalendarIcon />,
+      path: '/schedule',
+      items: [
+        { title: 'Teaching Calendar', path: '/schedule/calendar' },
+        { title: 'Available Slots', path: '/schedule/slots' },
+        { title: 'Class Requests', path: '/schedule/requests' },
+        { title: 'Templates', path: '/schedule/templates' },
+      ],
+    },
+    {
+      title: 'Classes',
+      icon: <ClassIcon />,
+      path: '/classes',
+      items: [
+        { title: 'Start Live Class', path: '/classes/live' },
+        { title: 'Preparation', path: '/classes/prep' },
+        { title: 'Whiteboard', path: '/classes/whiteboard' },
+        { title: 'Recordings', path: '/classes/recordings' },
+      ],
+    },
+    {
+      title: 'Students',
+      icon: <PeopleIcon />,
+      path: '/students',
+      items: [
+        { title: 'Student List', path: '/students/list' },
+        { title: 'Progress Tracking', path: '/students/progress' },
+        { title: 'Attendance', path: '/students/attendance' },
+      ],
+    },
+    {
+      title: 'Profile',
+      icon: <PersonIcon />,
+      path: '/profile',
+      items: [
+        { title: 'Teaching Profile', path: '/profile/teaching' },
+        { title: 'Calendar Settings', path: '/profile/calendar' },
+        { title: 'Availability', path: '/profile/availability' },
+      ],
+    },
+  ],
+  admin: [
+    {
+      title: 'Home',
+      icon: <DashboardIcon />,
+      path: '/admin',
+    },
+    {
+      title: 'User Management',
+      icon: <PeopleIcon />,
+      path: '/admin/users',
+      items: [
+        { title: 'Teachers', path: '/admin/users/teachers' },
+        { title: 'Students', path: '/admin/users/students' },
+        { title: 'Parents', path: '/admin/users/parents' },
+        { title: 'Admins', path: '/admin/users/admins' },
+      ],
+    },
+    {
+      title: 'Course Management',
+      icon: <SchoolIcon />,
+      path: '/admin/courses',
+      items: [
+        { title: 'Course Approval', path: '/admin/courses/approval' },
+        { title: 'Curriculum', path: '/admin/courses/curriculum' },
+        { title: 'Quality Control', path: '/admin/courses/quality' },
+      ],
+    },
+    {
+      title: 'Settings',
+      icon: <SettingsIcon />,
+      path: '/admin/settings',
+      items: [
+        { title: 'System Settings', path: '/admin/settings/system' },
+        { title: 'Notifications', path: '/admin/settings/notifications' },
+        { title: 'Backup', path: '/admin/settings/backup' },
+      ],
+    },
+  ],
+};
 
-const LogoText = styled(Typography)(({ theme }) => ({
-  background: theme.palette.mode === 'light'
-    ? 'linear-gradient(45deg, #4A90E2 30%, #2171C7 90%)'
-    : 'linear-gradient(45deg, #68A6E8 30%, #4A90E2 90%)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  fontWeight: 700,
-  letterSpacing: '1px',
-}));
-
-export default function Layout({ children }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+const Layout = ({ children }) => {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, logout } = useAuth();
+  const { currentUser } = useAuth();
+  const [open, setOpen] = useState(true);
+  const [expandedItem, setExpandedItem] = useState('');
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
-  const getMenuItems = () => {
-    const commonItems = [
-      { text: 'Profile', icon: <AccountCircleIcon />, path: '/profile' },
-    ];
-
-    const roleBasedItems = {
-      student: [
-        { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-        { text: 'My Classes', icon: <SchoolIcon />, path: '/schedule' },
-        { text: 'Learn', icon: <BookIcon />, path: '/learn' },
-      ],
-      teacher: [
-        { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
-        { text: 'Schedule', icon: <ScheduleIcon />, path: '/schedule' },
-        { text: 'Students', icon: <PeopleIcon />, path: '/students' },
-        { text: 'Materials', icon: <BookIcon />, path: '/materials' },
-      ],
-      admin: [
-        { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin' },
-        { text: 'Users', icon: <PeopleIcon />, path: '/admin/users' },
-        { text: 'Courses', icon: <SchoolIcon />, path: '/admin/courses' },
-        { text: 'Reports', icon: <AssessmentIcon />, path: '/admin/reports' },
-        { text: 'Settings', icon: <SettingsIcon />, path: '/admin/settings' },
-      ],
-    };
-
-    return [
-      ...(roleBasedItems[currentUser?.role || 'student'] || []),
-      ...commonItems,
-      { text: 'Logout', icon: <LogoutIcon />, path: '/logout' },
-    ];
-  };
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigate('/login');
-    } catch (error) {
-      console.error('Failed to log out:', error);
+  // Close drawer on mobile by default
+  useEffect(() => {
+    if (isMobile) {
+      setOpen(false);
     }
-  };
-
-  const handleMenuClick = (path) => {
-    if (path === '/logout') {
-      handleLogout();
-    } else {
-      navigate(path);
-      setMobileOpen(false);
-    }
-  };
-
-  const menuItems = getMenuItems();
-
-  const drawer = (
-    <Box sx={{ height: '100%', background: theme.palette.background.default }}>
-      <Toolbar sx={{ justifyContent: 'center' }}>
-        <LogoText variant="h5" component={motion.div} whileHover={{ scale: 1.05 }}>
-          IQRA
-        </LogoText>
-      </Toolbar>
-      <List>
-        {menuItems.map((item) => (
-          <StyledListItem
-            button
-            key={item.text}
-            active={location.pathname === item.path ? 1 : 0}
-            onClick={() => handleMenuClick(item.path)}
-            component={motion.div}
-            whileHover={{ x: 4 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <ListItemIcon sx={{ color: 'inherit' }}>{item.icon}</ListItemIcon>
-            <ListItemText primary={item.text} />
-          </StyledListItem>
-        ))}
-      </List>
-    </Box>
-  );
+  }, [isMobile]);
 
   const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
+    setOpen(!open);
   };
 
+  const handleItemClick = (path) => {
+    navigate(path);
+    if (isMobile) {
+      setOpen(false);
+    }
+  };
+
+  const handleExpandClick = (title) => {
+    setExpandedItem(expandedItem === title ? '' : title);
+  };
+
+  const isPathActive = (path) => {
+    return location.pathname.startsWith(path);
+  };
+
+  const renderMenuItem = (item) => {
+    const isActive = isPathActive(item.path);
+    const isExpanded = expandedItem === item.title;
+
+    return (
+      <Box key={item.title} sx={{ mb: 0.5 }}>
+        <ListItemButton
+          onClick={() => {
+            if (item.items) {
+              handleExpandClick(item.title);
+            } else {
+              handleItemClick(item.path);
+            }
+          }}
+          sx={{
+            borderRadius: 1,
+            mb: 0.5,
+            backgroundColor: isActive
+              ? alpha(theme.palette.primary.main, 0.1)
+              : 'transparent',
+            color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
+            '&:hover': {
+              backgroundColor: alpha(theme.palette.primary.main, 0.05),
+            },
+          }}
+        >
+          <ListItemIcon
+            sx={{
+              color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
+            }}
+          >
+            {item.icon}
+          </ListItemIcon>
+          <ListItemText primary={item.title} />
+          {item.items && (isExpanded ? <ExpandLess /> : <ExpandMore />)}
+        </ListItemButton>
+        {item.items && (
+          <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+            <List component="div" disablePadding>
+              {item.items.map((subItem) => (
+                <ListItemButton
+                  key={subItem.title}
+                  onClick={() => handleItemClick(subItem.path)}
+                  sx={{
+                    pl: 4,
+                    py: 0.5,
+                    borderRadius: 1,
+                    ml: 2,
+                    backgroundColor: location.pathname === subItem.path
+                      ? alpha(theme.palette.primary.main, 0.1)
+                      : 'transparent',
+                    color: location.pathname === subItem.path
+                      ? theme.palette.primary.main
+                      : theme.palette.text.primary,
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                    },
+                  }}
+                >
+                  <ListItemText 
+                    primary={subItem.title}
+                    primaryTypographyProps={{
+                      variant: 'body2',
+                      sx: { fontWeight: location.pathname === subItem.path ? 600 : 400 }
+                    }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          </Collapse>
+        )}
+      </Box>
+    );
+  };
+
+  const userRole = currentUser?.role || 'student';
+  const currentMenuItems = menuItems[userRole] || [];
+
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <AppBar
         position="fixed"
         sx={{
-          width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
-          zIndex: theme.zIndex.drawer + 1,
-          backgroundColor: theme.palette.mode === 'light' 
-            ? 'rgba(255, 255, 255, 0.9)'
-            : 'rgba(18, 18, 18, 0.9)',
-          backdropFilter: 'blur(8px)',
-          color: theme.palette.mode === 'light' ? '#2C3E50' : '#E0E0E0',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          backgroundColor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
+          boxShadow: 1,
+          width: { md: `calc(100% - ${open ? drawerWidth : 0}px)` },
+          ml: { md: `${open ? drawerWidth : 0}px` },
+          transition: theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         <Toolbar>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
+            aria-label="toggle drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ 
-              mr: 2, 
-              display: { sm: 'none' },
-              zIndex: theme.zIndex.drawer + 2,
-              backgroundColor: theme.palette.mode === 'light' 
-                ? 'rgba(44, 62, 80, 0.1)'
-                : 'rgba(255, 255, 255, 0.1)',
-              '&:hover': {
-                backgroundColor: theme.palette.mode === 'light'
-                  ? 'rgba(44, 62, 80, 0.2)'
-                  : 'rgba(255, 255, 255, 0.2)',
-              },
-            }}
+            sx={{ mr: 2, display: 'flex' }}
           >
-            <MenuIcon sx={{ 
-              color: theme.palette.mode === 'light' ? '#2C3E50' : '#E0E0E0',
-            }} />
+            <MenuIcon />
           </IconButton>
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <Typography variant="h6" noWrap component="div">
-              IQRA Learning Platform
-            </Typography>
-          </motion.div>
+          <DashboardHeader />
         </Toolbar>
       </AppBar>
 
-      <Box
-        component="nav"
+      <Drawer
+        variant={isMobile ? 'temporary' : 'persistent'}
+        anchor="left"
+        open={open}
+        onClose={handleDrawerToggle}
         sx={{
-          width: { sm: drawerWidth },
-          flexShrink: { sm: 0 },
-          zIndex: theme.zIndex.drawer,
+          width: drawerWidth,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: drawerWidth,
+            boxSizing: 'border-box',
+            backgroundColor: theme.palette.background.default,
+            borderRight: `1px solid ${theme.palette.divider}`,
+          },
         }}
       >
-        {/* Mobile drawer */}
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true,
-          }}
+        <Toolbar
           sx={{
-            display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': {
-              boxSizing: 'border-box',
-              width: drawerWidth,
-              backgroundColor: theme.palette.background.default,
-              borderRight: 'none',
-              boxShadow: '4px 0 8px rgba(0,0,0,0.05)',
-            },
-            zIndex: theme.zIndex.drawer,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: [1],
           }}
         >
-          {drawer}
-        </Drawer>
-
-        {/* Desktop drawer */}
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': {
-              boxSizing: 'border-box',
-              width: drawerWidth,
-              backgroundColor: theme.palette.background.default,
-              borderRight: 'none',
-              boxShadow: '4px 0 8px rgba(0,0,0,0.05)',
-            },
-          }}
-          open
-        >
-          {drawer}
-        </Drawer>
-      </Box>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
+            IQRA
+          </Typography>
+          <IconButton onClick={handleDrawerToggle}>
+            <ChevronLeftIcon />
+          </IconButton>
+        </Toolbar>
+        <Divider />
+        <List sx={{ px: 2, py: 1 }}>
+          {currentMenuItems.map(renderMenuItem)}
+        </List>
+      </Drawer>
 
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          width: { md: `calc(100% - ${drawerWidth}px)` },
+          mt: 8,
+          backgroundColor: theme.palette.background.default,
           minHeight: '100vh',
-          background: theme.palette.mode === 'light'
-            ? 'linear-gradient(135deg, #f5f7fa 0%, #e4e7eb 100%)'
-            : 'linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%)',
-          pt: { xs: 8, sm: 9 },
         }}
       >
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        {children}
       </Box>
     </Box>
   );
-}
+};
+
+export default Layout;
