@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    function isStudent() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
+    function isParent() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // Allow users to read their own document
+      allow read: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isAdmin()
+      );
+      
+      // Allow users to create their own document
+      allow create: if isAuthenticated() && 
+        request.auth.uid == userId &&
+        request.resource.data.role in ['student', 'teacher'] &&
+        (!request.resource.data.keys().hasAny(['isAdmin', 'customClaims']));
+      
+      // Allow users to update their own document
+      allow update: if isAuthenticated() && (
+        // Admin can update any user
+        isAdmin() ||
+        // Users can update their own non-sensitive fields
+        (request.auth.uid == userId &&
+         request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'photoURL', 'settings']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Classes collection
+    match /classes/{classId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isTeacher() || isAdmin();
+      
+      // Allow students to read their enrolled classes
+      match /enrollments/{userId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if isTeacher() || isAdmin();
+      }
+    }
+
+    // Course materials collection
+    match /materials/{materialId} {
+      allow read: if true; // Allow public read for free content
+      allow create: if isTeacher() || isAdmin();
+      allow update: if isTeacher() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Student progress collection
+    match /progress/{progressId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.studentId) || 
+        resource.data.parentId == request.auth.uid ||
+        isTeacher() || 
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isOwner(resource.data.studentId) || 
+        isTeacher() || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Assignments collection
+    match /assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isTeacher() || isAdmin();
+      
+      // Allow students to submit their assignments
+      match /submissions/{userId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    // Parent-Student relationships
+    match /parent-student/{relationId} {
+      allow read: if isSignedIn() && (
+        isOwner(resource.data.parentId) || 
+        isOwner(resource.data.studentId) || 
+        isAdmin()
+      );
+      allow create: if isParent() || isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Free content for guests
+    match /free-content/{contentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

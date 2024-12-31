@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Admin User</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js" type="module"></script>
+</head>
+<body>
+    <h2>Create Admin User</h2>
+    <div id="message"></div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getAuth, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+        import { getFirestore, doc, setDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyBgyatDftzlqelwj9AzXCAvnd1dCsxD5w0",
+            authDomain: "iqra-3fee3.firebaseapp.com",
+            projectId: "iqra-3fee3",
+            storageBucket: "iqra-3fee3.firebasestorage.app",
+            messagingSenderId: "474325405168",
+            appId: "1:474325405168:web:a68f89aa7aa0a712282135",
+            measurementId: "G-2JGGRDJPG2"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const email = 'admin@iqra.com';
+        const password = 'admin1234';
+
+        async function createAdmin() {
+            try {
+                const messageDiv = document.getElementById('message');
+                messageDiv.innerHTML = 'Creating admin user...';
+
+                // Create user
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+
+                // Add admin role
+                await setDoc(doc(db, 'users', user.uid), {
+                    email: email,
+                    role: 'admin',
+                    createdAt: new Date().toISOString(),
+                    isAdmin: true,
+                    displayName: 'Admin User',
+                    permissions: ['all'],
+                    status: 'active'
+                });
+
+                messageDiv.innerHTML = `
+                    Admin user created successfully!<br>
+                    Email: ${email}<br>
+                    Password: ${password}
+                `;
+            } catch (error) {
+                const messageDiv = document.getElementById('message');
+                if (error.code === 'auth/email-already-in-use') {
+                    messageDiv.innerHTML = `
+                        Admin user already exists!<br>
+                        Email: ${email}<br>
+                        Password: ${password}
+                    `;
+                } else {
+                    messageDiv.innerHTML = 'Error: ' + error.message;
+                }
+            }
+        }
+
+        // Create admin user when page loads
+        createAdmin();
+    </script>
+</body>
+</html>
