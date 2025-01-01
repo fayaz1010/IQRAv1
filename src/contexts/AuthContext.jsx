@@ -67,7 +67,23 @@ export function AuthProvider({ children }) {
   async function loginWithGoogle(role = 'student') {
     try {
       const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth, provider);
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      
+      // Create the popup immediately when the function is called
+      const userCredential = await signInWithPopup(auth, provider)
+        .catch((error) => {
+          if (error.code === 'auth/popup-blocked') {
+            throw new Error('Please allow popups for this website to sign in with Google');
+          }
+          throw error;
+        });
+
+      if (!userCredential) {
+        return { success: false, error: 'Google sign-in was cancelled' };
+      }
+
       const user = userCredential.user;
 
       // Check if user exists in Firestore
@@ -90,10 +106,13 @@ export function AuthProvider({ children }) {
         }
       }
 
-      return { success: true };
+      return { success: true, user: { ...user, role: role } };
     } catch (error) {
       console.error('Google login error:', error);
-      return { success: false, error: error.message };
+      return { 
+        success: false, 
+        error: error.message || 'Failed to sign in with Google'
+      };
     }
   }
 

@@ -9,6 +9,7 @@ import Register from './pages/auth/Register';
 import Dashboard from './pages/dashboard/Dashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import Layout from './components/layout/Layout';
+import LandingPage from './pages/public/LandingPage'; // Fix the import path for LandingPage component
 
 // Initialize Firebase
 const firebaseConfig = {
@@ -38,7 +39,7 @@ const ProtectedRoute = ({ children, requireAdmin }) => {
   }
 
   if (!currentUser) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   if (requireAdmin && currentUser.role !== 'admin') {
@@ -60,7 +61,8 @@ const PublicRoute = ({ children }) => {
     );
   }
 
-  if (currentUser) {
+  // If user is logged in and trying to access auth pages, redirect to appropriate dashboard
+  if (currentUser && window.location.pathname !== '/') {
     if (currentUser.role === 'admin') {
       return <Navigate to="/admin" replace />;
     }
@@ -80,6 +82,14 @@ function App() {
         <AuthProvider>
           <Routes>
             {/* Public Routes */}
+            <Route 
+              path="/" 
+              element={
+                <PublicRoute>
+                  <LandingPage />
+                </PublicRoute>
+              } 
+            />
             <Route 
               path="/login" 
               element={
@@ -113,16 +123,6 @@ function App() {
                   <AdminDashboard />
                 </ProtectedRoute>
               }
-            />
-
-            {/* Default Route */}
-            <Route 
-              path="/" 
-              element={
-                <PublicRoute>
-                  <Login />
-                </PublicRoute>
-              } 
             />
 
             {/* Catch all route */}

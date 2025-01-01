@@ -30,7 +30,10 @@ const Login = () => {
       setLoading(true);
       const result = await login(email, password);
       if (result.success) {
-        navigate('/dashboard', { replace: true });
+        // Navigate based on user role
+        const userRole = result.user?.role || 'student';
+        const redirectPath = userRole === 'admin' ? '/admin' : '/dashboard';
+        navigate(redirectPath, { replace: true });
       } else {
         setError(result.error || 'Failed to sign in');
       }
@@ -41,18 +44,26 @@ const Login = () => {
     }
   };
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (e) => {
+    e.preventDefault(); // Prevent any default button behavior
+    
     try {
       setError('');
       setLoading(true);
+      
+      // Call Google sign-in directly from the click handler
       const result = await loginWithGoogle();
+      
       if (result.success) {
-        navigate('/dashboard', { replace: true });
+        // Navigate based on user role
+        const userRole = result.user?.role || 'student';
+        const redirectPath = userRole === 'admin' ? '/admin' : '/dashboard';
+        navigate(redirectPath, { replace: true });
       } else {
         setError(result.error || 'Failed to sign in with Google');
       }
     } catch (error) {
-      setError('Failed to sign in with Google');
+      setError(error.message || 'Failed to sign in with Google');
     } finally {
       setLoading(false);
     }
@@ -141,9 +152,11 @@ const Login = () => {
               <Button
                 fullWidth
                 variant="outlined"
-                startIcon={<GoogleIcon />}
+                color="primary"
                 onClick={handleGoogleSignIn}
                 disabled={loading}
+                startIcon={<GoogleIcon />}
+                sx={{ mt: 2, mb: 2 }}
               >
                 Sign in with Google
               </Button>

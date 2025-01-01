@@ -35,7 +35,7 @@ const DashboardHeader = () => {
   const handleLogout = async () => {
     try {
       await logout();
-      navigate('/login');
+      navigate('/', { replace: true });
     } catch (error) {
       console.error('Failed to log out:', error);
     }
