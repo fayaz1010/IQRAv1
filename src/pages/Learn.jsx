@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Grid,
@@ -14,10 +15,12 @@ import {
   Book as BookIcon,
   PlayCircleOutline as PlayIcon,
   School as SchoolIcon,
+  Create as CreateIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 
 const Learn = () => {
+  const navigate = useNavigate();
   const [courses] = useState([
     {
       id: 1,
@@ -93,8 +96,11 @@ const Learn = () => {
           startIcon={<PlayIcon />}
           fullWidth
           onClick={() => {
-            // TODO: Implement course navigation
-            console.log('Navigate to course:', course.id);
+            if (course.type === 'iqra') {
+              navigate(`/learn/iqra/${course.id}`);
+            } else {
+              console.log('Navigate to course:', course.id);
+            }
           }}
         >
           {course.progress > 0 ? 'Continue' : 'Start'}

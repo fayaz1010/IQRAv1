@@ -15,6 +15,8 @@ const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
 const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
 const LandingPage = React.lazy(() => import('../pages/public/LandingPage'));
 const Settings = React.lazy(() => import('../pages/settings/Settings'));
+const IqraBookViewer = React.lazy(() => import('../features/iqra/components/IqraBookViewer'));
+const IqraTeaching = React.lazy(() => import('../features/iqra/components/IqraTeaching'));
 
 // Loading screen shown while components are loading
 const LoadingScreen = () => (
@@ -146,6 +148,18 @@ const AppRoutes = () => {
         }
       />
 
+      {/* Teacher Iqra Routes */}
+      <Route
+        path="/classes/iqra"
+        element={
+          <Suspense fallback={<LoadingScreen />}>
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <IqraTeaching />
+            </ProtectedRoute>
+          </Suspense>
+        }
+      />
+
       {/* Admin Routes */}
       <Route
         path="/admin"
@@ -153,6 +167,18 @@ const AppRoutes = () => {
           <Suspense fallback={<LoadingScreen />}>
             <ProtectedRoute allowedRoles={['admin']}>
               <AdminDashboard />
+            </ProtectedRoute>
+          </Suspense>
+        }
+      />
+
+      {/* Iqra Routes */}
+      <Route
+        path="/learn/iqra/:bookId"
+        element={
+          <Suspense fallback={<LoadingScreen />}>
+            <ProtectedRoute allowedRoles={['student', 'teacher']}>
+              <IqraBookViewer />
             </ProtectedRoute>
           </Suspense>
         }

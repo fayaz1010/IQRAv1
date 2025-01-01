@@ -111,6 +111,7 @@ const menuItems = {
         { title: 'Preparation', path: '/classes/prep' },
         { title: 'Whiteboard', path: '/classes/whiteboard' },
         { title: 'Recordings', path: '/classes/recordings' },
+        { title: 'Iqra Teaching', path: '/classes/iqra' }
       ],
     },
     {
