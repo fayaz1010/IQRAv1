@@ -9,19 +9,24 @@ import {
   MenuItem,
   Divider,
   useTheme,
+  Tooltip,
 } from '@mui/material';
 import {
   AccountCircle as AccountIcon,
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon,
+  Brightness4 as DarkModeIcon,
+  Brightness7 as LightModeIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme as useAppTheme } from '../../contexts/ThemeContext';
 
 const DashboardHeader = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
+  const { mode, toggleTheme } = useAppTheme();
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleMenu = (event) => {
@@ -89,45 +94,55 @@ const DashboardHeader = () => {
       </Box>
 
       <Box>
-        <IconButton
-          size="large"
-          aria-label="account menu"
-          aria-controls="menu-appbar"
-          aria-haspopup="true"
-          onClick={handleMenu}
-          color="inherit"
-        >
-          <AccountIcon />
-        </IconButton>
-        <Menu
-          id="menu-appbar"
-          anchorEl={anchorEl}
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'right',
-          }}
-          keepMounted
-          transformOrigin={{
-            vertical: 'top',
-            horizontal: 'right',
-          }}
-          open={Boolean(anchorEl)}
-          onClose={handleClose}
-        >
-          <MenuItem onClick={() => { handleClose(); navigate('/profile'); }}>
-            <AccountIcon sx={{ mr: 1 }} fontSize="small" />
-            Profile
-          </MenuItem>
-          <MenuItem onClick={() => { handleClose(); navigate('/settings'); }}>
-            <SettingsIcon sx={{ mr: 1 }} fontSize="small" />
-            Settings
-          </MenuItem>
-          <Divider />
-          <MenuItem onClick={() => { handleClose(); handleLogout(); }}>
-            <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
-            Logout
-          </MenuItem>
-        </Menu>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* Theme Toggle */}
+          <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+            <IconButton onClick={toggleTheme} color="inherit">
+              {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
+            </IconButton>
+          </Tooltip>
+
+          {/* Profile Menu */}
+          <IconButton
+            size="large"
+            aria-label="account menu"
+            aria-controls="menu-appbar"
+            aria-haspopup="true"
+            onClick={handleMenu}
+            color="inherit"
+          >
+            <AccountIcon />
+          </IconButton>
+          <Menu
+            id="menu-appbar"
+            anchorEl={anchorEl}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            keepMounted
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            open={Boolean(anchorEl)}
+            onClose={handleClose}
+          >
+            <MenuItem onClick={() => { handleClose(); navigate('/profile'); }}>
+              <AccountIcon sx={{ mr: 1 }} fontSize="small" />
+              Profile
+            </MenuItem>
+            <MenuItem onClick={() => { handleClose(); navigate('/settings'); }}>
+              <SettingsIcon sx={{ mr: 1 }} fontSize="small" />
+              Settings
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => { handleClose(); handleLogout(); }}>
+              <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
+              Logout
+            </MenuItem>
+          </Menu>
+        </Box>
       </Box>
     </Box>
   );
