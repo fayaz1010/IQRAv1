@@ -13,6 +13,8 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   IconButton,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -24,9 +26,11 @@ import {
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
+import { collection, query, where, getDocs, doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
   const [stats, setStats] = useState({
     activeUsers: 0,
     activeClasses: 0,
@@ -34,21 +38,73 @@ const AdminDashboard = () => {
     systemHealth: 'Good',
   });
   const [pendingTeachers, setPendingTeachers] = useState([]);
+  const [alert, setAlert] = useState({ open: false, message: '', severity: 'success' });
 
+  // Fetch dashboard data
   useEffect(() => {
-    // TODO: Fetch admin dashboard data from Firebase
-    // This is placeholder data
-    setStats({
-      activeUsers: 150,
-      activeClasses: 25,
-      pendingApprovals: 5,
-      systemHealth: 'Good',
+    if (!currentUser?.role === 'admin') return;
+
+    // Listen for changes in pending teachers
+    const pendingTeachersQuery = query(
+      collection(db, 'users'),
+      where('role', '==', 'teacher'),
+      where('status', '==', 'pending')
+    );
+
+    const unsubscribe = onSnapshot(pendingTeachersQuery, (snapshot) => {
+      const teachersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setPendingTeachers(teachersData);
+      setStats(prev => ({ ...prev, pendingApprovals: teachersData.length }));
+    }, (error) => {
+      console.error('Error fetching pending teachers:', error);
+      setAlert({
+        open: true,
+        message: 'Error fetching pending teachers',
+        severity: 'error'
+      });
     });
-    setPendingTeachers([
-      { id: 1, name: 'John Doe', email: 'john@example.com', qualification: 'Masters in Arabic' },
-      { id: 2, name: 'Jane Smith', email: 'jane@example.com', qualification: 'Islamic Studies' },
-    ]);
-  }, []);
+
+    // Fetch other stats
+    const fetchStats = async () => {
+      try {
+        // Get all active users
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('status', '==', 'active')
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        const totalUsers = usersSnapshot.size;
+
+        // Get active classes
+        const classesQuery = query(
+          collection(db, 'classes'),
+          where('status', '==', 'active')
+        );
+        const classesSnapshot = await getDocs(classesQuery);
+        const totalClasses = classesSnapshot.size;
+
+        // Update stats
+        setStats(prev => ({
+          ...prev,
+          activeUsers: totalUsers,
+          activeClasses: totalClasses,
+        }));
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+        setAlert({
+          open: true,
+          message: 'Error fetching dashboard statistics',
+          severity: 'error'
+        });
+      }
+    };
+
+    fetchStats();
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const StatCard = ({ title, value, icon, color }) => (
     <Card
@@ -70,14 +126,50 @@ const AdminDashboard = () => {
     </Card>
   );
 
-  const handleApprove = (teacherId) => {
-    // TODO: Implement teacher approval
-    console.log('Approve teacher:', teacherId);
+  const handleApprove = async (teacherId) => {
+    try {
+      const teacherRef = doc(db, 'users', teacherId);
+      await updateDoc(teacherRef, {
+        status: 'active'
+      });
+      setAlert({
+        open: true,
+        message: 'Teacher approved successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error approving teacher:', error);
+      setAlert({
+        open: true,
+        message: 'Error approving teacher',
+        severity: 'error'
+      });
+    }
   };
 
-  const handleReject = (teacherId) => {
-    // TODO: Implement teacher rejection
-    console.log('Reject teacher:', teacherId);
+  const handleReject = async (teacherId) => {
+    try {
+      const teacherRef = doc(db, 'users', teacherId);
+      await updateDoc(teacherRef, {
+        status: 'rejected'
+      });
+      setAlert({
+        open: true,
+        message: 'Teacher rejected',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error rejecting teacher:', error);
+      setAlert({
+        open: true,
+        message: 'Error rejecting teacher',
+        severity: 'error'
+      });
+    }
+  };
+
+  const handleCloseAlert = () => {
+    setAlert(prev => ({ ...prev, open: false }));
   };
 
   return (
@@ -144,8 +236,8 @@ const AdminDashboard = () => {
               {pendingTeachers.map((teacher) => (
                 <ListItem key={teacher.id}>
                   <ListItemText
-                    primary={teacher.name}
-                    secondary={`${teacher.email} - ${teacher.qualification}`}
+                    primary={teacher.email}
+                    secondary={`Role: ${teacher.role} - Status: ${teacher.status}`}
                   />
                   <ListItemSecondaryAction>
                     <IconButton
@@ -168,10 +260,26 @@ const AdminDashboard = () => {
                   </ListItemSecondaryAction>
                 </ListItem>
               ))}
+              {pendingTeachers.length === 0 && (
+                <ListItem>
+                  <ListItemText primary="No pending teacher approvals" />
+                </ListItem>
+              )}
             </List>
           </Paper>
         </Grid>
       </Grid>
+
+      <Snackbar 
+        open={alert.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseAlert} severity={alert.severity}>
+          {alert.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

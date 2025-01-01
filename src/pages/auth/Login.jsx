@@ -31,9 +31,16 @@ const Login = () => {
       const result = await login(email, password);
       if (result.success) {
         // Navigate based on user role
-        const userRole = result.user?.role || 'student';
-        const redirectPath = userRole === 'admin' ? '/admin' : '/dashboard';
-        navigate(redirectPath, { replace: true });
+        switch (result.user.role) {
+          case 'admin':
+            navigate('/admin', { replace: true });
+            break;
+          case 'teacher':
+            navigate('/teacher', { replace: true });
+            break;
+          default:
+            navigate('/dashboard', { replace: true });
+        }
       } else {
         setError(result.error || 'Failed to sign in');
       }
@@ -56,9 +63,16 @@ const Login = () => {
       
       if (result.success) {
         // Navigate based on user role
-        const userRole = result.user?.role || 'student';
-        const redirectPath = userRole === 'admin' ? '/admin' : '/dashboard';
-        navigate(redirectPath, { replace: true });
+        switch (result.user.role) {
+          case 'admin':
+            navigate('/admin', { replace: true });
+            break;
+          case 'teacher':
+            navigate('/teacher', { replace: true });
+            break;
+          default:
+            navigate('/dashboard', { replace: true });
+        }
       } else {
         setError(result.error || 'Failed to sign in with Google');
       }

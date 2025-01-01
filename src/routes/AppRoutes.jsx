@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout/Layout';
 import { CircularProgress, Box } from '@mui/material';
 
-// Lazy load components
+// Lazy load components - this improves initial loading performance
 const Dashboard = React.lazy(() => import('../pages/Dashboard'));
 const Login = React.lazy(() => import('../pages/auth/Login'));
 const Register = React.lazy(() => import('../pages/auth/Register'));
@@ -13,8 +13,10 @@ const Schedule = React.lazy(() => import('../pages/Schedule'));
 const Learn = React.lazy(() => import('../pages/Learn'));
 const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
 const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
+const LandingPage = React.lazy(() => import('../pages/public/LandingPage'));
+const Settings = React.lazy(() => import('../pages/settings/Settings'));
 
-// Loading component
+// Loading screen shown while components are loading
 const LoadingScreen = () => (
   <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
     <CircularProgress />
@@ -22,70 +24,89 @@ const LoadingScreen = () => (
 );
 
 const AppRoutes = () => {
-  const { user, userRole, loading } = useAuth();
+  // Get authentication state and user role from AuthContext
+  const { currentUser, loading } = useAuth();
 
-  // Show loading screen while auth state is being determined
+  // Show loading screen while checking authentication
   if (loading) {
     return <LoadingScreen />;
   }
 
+  // Get the appropriate dashboard route based on user role
+  const getDashboardRoute = () => {
+    if (!currentUser) return '/';
+    
+    switch (currentUser.role) {
+      case 'admin':
+        return '/admin';
+      case 'teacher':
+        return '/teacher';
+      default:
+        return '/dashboard';
+    }
+  };
+
   // Protected route wrapper
-  const ProtectedRoute = ({ children, allowedRoles }) => {
-    if (!user) {
+  // This component:
+  // 1. Checks if user is authenticated
+  // 2. Verifies user has permission for the route
+  // 3. Wraps the content in the Layout component
+  const ProtectedRoute = ({ children, allowedRoles = ['student', 'teacher', 'admin'] }) => {
+    // Redirect to landing page if not logged in
+    if (!currentUser) {
       return <Navigate to="/" replace />;
     }
 
-    if (allowedRoles && !allowedRoles.includes(userRole)) {
-      // Redirect to appropriate dashboard based on role
-      switch (userRole) {
-        case 'admin':
-          return <Navigate to="/admin" replace />;
-        case 'teacher':
-          return <Navigate to="/teacher" replace />;
-        default:
-          return <Navigate to="/dashboard" replace />;
-      }
+    // Redirect to appropriate dashboard if user doesn't have permission
+    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
+      return <Navigate to={getDashboardRoute()} replace />;
     }
 
+    // Wrap the content in the Layout component
     return <Layout>{children}</Layout>;
-  };
-
-  // Auth route wrapper (for login/register pages)
-  const AuthRoute = ({ children }) => {
-    if (user) {
-      // Redirect to appropriate dashboard based on role
-      switch (userRole) {
-        case 'admin':
-          return <Navigate to="/admin" replace />;
-        case 'teacher':
-          return <Navigate to="/teacher" replace />;
-        default:
-          return <Navigate to="/dashboard" replace />;
-      }
-    }
-    return children;
   };
 
   return (
     <Routes>
-      {/* Auth Routes */}
+      {/* Public Routes */}
+      {/* Landing Page - shows landing page if not logged in, redirects to dashboard if logged in */}
+      <Route
+        path="/"
+        element={
+          <Suspense fallback={<LoadingScreen />}>
+            {currentUser ? (
+              <Navigate to={getDashboardRoute()} replace />
+            ) : (
+              <LandingPage />
+            )}
+          </Suspense>
+        }
+      />
+
+      {/* Login Page - shows login if not logged in, redirects to dashboard if logged in */}
       <Route
         path="/login"
         element={
           <Suspense fallback={<LoadingScreen />}>
-            <AuthRoute>
+            {currentUser ? (
+              <Navigate to={getDashboardRoute()} replace />
+            ) : (
               <Login />
-            </AuthRoute>
+            )}
           </Suspense>
         }
       />
+
+      {/* Register Page - shows register if not logged in, redirects to dashboard if logged in */}
       <Route
         path="/register"
         element={
           <Suspense fallback={<LoadingScreen />}>
-            <AuthRoute>
+            {currentUser ? (
+              <Navigate to={getDashboardRoute()} replace />
+            ) : (
               <Register />
-            </AuthRoute>
+            )}
           </Suspense>
         }
       />
@@ -101,16 +122,7 @@ const AppRoutes = () => {
           </Suspense>
         }
       />
-      <Route
-        path="/schedule"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['student']}>
-              <Schedule />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
+
       <Route
         path="/learn"
         element={
@@ -124,7 +136,7 @@ const AppRoutes = () => {
 
       {/* Teacher Routes */}
       <Route
-        path="/teacher/*"
+        path="/teacher"
         element={
           <Suspense fallback={<LoadingScreen />}>
             <ProtectedRoute allowedRoles={['teacher']}>
@@ -136,7 +148,7 @@ const AppRoutes = () => {
 
       {/* Admin Routes */}
       <Route
-        path="/admin/*"
+        path="/admin"
         element={
           <Suspense fallback={<LoadingScreen />}>
             <ProtectedRoute allowedRoles={['admin']}>
@@ -146,21 +158,42 @@ const AppRoutes = () => {
         }
       />
 
-      {/* Common Routes */}
+      {/* Common Protected Routes - accessible by all authenticated users */}
       <Route
         path="/profile"
         element={
           <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['student', 'teacher', 'admin']}>
+            <ProtectedRoute>
               <Profile />
             </ProtectedRoute>
           </Suspense>
         }
       />
 
-      {/* Default Routes */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route
+        path="/schedule"
+        element={
+          <Suspense fallback={<LoadingScreen />}>
+            <ProtectedRoute>
+              <Schedule />
+            </ProtectedRoute>
+          </Suspense>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <Suspense fallback={<LoadingScreen />}>
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          </Suspense>
+        }
+      />
+
+      {/* Catch all route - redirects to landing page */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };

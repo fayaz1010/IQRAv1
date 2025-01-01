@@ -26,7 +26,7 @@ const DashboardHeader = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
-  const { mode, toggleTheme } = useAppTheme();
+  const { mode, toggleMode } = useAppTheme();
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleMenu = (event) => {
@@ -97,7 +97,7 @@ const DashboardHeader = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {/* Theme Toggle */}
           <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
-            <IconButton onClick={toggleTheme} color="inherit">
+            <IconButton onClick={toggleMode} color="inherit">
               {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
             </IconButton>
           </Tooltip>

@@ -1,19 +1,13 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// Import only what we need for the core app structure
+import { BrowserRouter as Router } from 'react-router-dom';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { CircularProgress, Box } from '@mui/material';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import getTheme from './theme/theme';
-import Login from './pages/auth/Login';
-import Register from './pages/auth/Register';
-import Dashboard from './pages/dashboard/Dashboard';
-import AdminDashboard from './pages/admin/AdminDashboard';
-import Layout from './components/layout/Layout';
-import LandingPage from './pages/public/LandingPage'; // Fix the import path for LandingPage component
-import Settings from './pages/settings/Settings';
+import AppRoutes from './routes/AppRoutes';
 
-// Initialize Firebase
+// Firebase configuration - needed for the entire app to work with Firebase
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -24,60 +18,22 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// Initialize Firebase app
+// Initialize Firebase - this sets up Firebase for the entire app
 import { initializeApp } from 'firebase/app';
 initializeApp(firebaseConfig);
 
-// Protected Route Component
-const ProtectedRoute = ({ children, requireAdmin }) => {
-  const { currentUser, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  if (!currentUser) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (requireAdmin && currentUser.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return <Layout>{children}</Layout>;
-};
-
-// Public Route Component
-const PublicRoute = ({ children }) => {
-  const { currentUser, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
-  // If user is logged in and trying to access auth pages, redirect to appropriate dashboard
-  if (currentUser && window.location.pathname !== '/') {
-    if (currentUser.role === 'admin') {
-      return <Navigate to="/admin" replace />;
-    }
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return children;
-};
-
+// Main App component
+// This component is responsible for:
+// 1. Setting up the Router for navigation
+// 2. Providing Authentication context to all child components
+// 3. Providing Theme context for consistent styling
 function App() {
   return (
+    // Router wraps the entire app to enable navigation
     <Router>
+      {/* AuthProvider makes authentication state available throughout the app */}
       <AuthProvider>
+        {/* ThemeProvider enables theme customization */}
         <ThemeProvider>
           <AppContent />
         </ThemeProvider>
@@ -86,70 +42,23 @@ function App() {
   );
 }
 
-// Separate component to use theme context
+// AppContent component
+// This component:
+// 1. Gets the current theme settings
+// 2. Applies the Material-UI theme
+// 3. Renders the main app routes
 function AppContent() {
+  // Get theme settings from ThemeContext
   const { mode, settings } = useTheme();
-  const theme = getTheme(mode, settings.fontSize);
+  const muiTheme = getTheme(mode, settings?.fontSize);
 
   return (
-    <MuiThemeProvider theme={theme}>
+    // Apply Material-UI theme
+    <MuiThemeProvider theme={muiTheme}>
+      {/* CssBaseline normalizes browser styles */}
       <CssBaseline />
-      <Routes>
-        {/* Public Routes */}
-        <Route 
-          path="/" 
-          element={
-            <PublicRoute>
-              <LandingPage />
-            </PublicRoute>
-          } 
-        />
-        <Route 
-          path="/login" 
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          } 
-        />
-        <Route 
-          path="/register" 
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          } 
-        />
-
-        {/* Protected Routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute requireAdmin>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Catch all route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      {/* AppRoutes contains all the routing logic */}
+      <AppRoutes />
     </MuiThemeProvider>
   );
 }
