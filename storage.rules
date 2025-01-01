@@ -1,0 +1,38 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        request.auth.token.role == 'admin';
+    }
+    
+    function isTeacher() {
+      return isAuthenticated() && 
+        request.auth.token.role == 'teacher';
+    }
+
+    // Iqra books storage
+    match /iqra-books/{bookId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Student recordings and materials
+    match /student-materials/{userId}/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isAdmin() || request.auth.uid == userId;
+    }
+
+    // Teaching materials
+    match /teaching-materials/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isAdmin();
+    }
+  }
+}

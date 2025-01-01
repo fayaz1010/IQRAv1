@@ -10,7 +10,7 @@ service cloud.firestore {
       return isAuthenticated() && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
-
+    
     function isTeacher() {
       return isAuthenticated() && 
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
@@ -50,22 +50,36 @@ service cloud.firestore {
         isAdmin() ||
         // Users can update their own non-sensitive fields
         (request.auth.uid == userId &&
-         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['displayName', 'photoURL', 'settings']))
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['role', 'isAdmin', 'customClaims']))
       );
       allow delete: if isAdmin();
     }
 
     // Classes collection
     match /classes/{classId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isTeacher() || isAdmin();
-      
-      // Allow students to read their enrolled classes
-      match /enrollments/{userId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow write: if isTeacher() || isAdmin();
-      }
+      // Teachers and admins can create classes
+      allow create: if isTeacher() || isAdmin();
+
+      // Teachers can read their own classes
+      // Students can read classes they're enrolled in
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.teacherId == request.auth.uid ||
+        request.auth.uid in resource.data.studentIds
+      );
+
+      // Teachers can update their own classes
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.teacherId == request.auth.uid
+      );
+
+      // Teachers can delete their own classes
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.teacherId == request.auth.uid
+      );
     }
 
     // Course materials collection
@@ -121,6 +135,18 @@ service cloud.firestore {
     match /free-content/{contentId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Iqra books collection
+    match /iqra-books/{bookId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Student progress collection
+    match /student-progress/{progressId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isAdmin();
     }
   }
 }

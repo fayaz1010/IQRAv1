@@ -38,6 +38,7 @@ firestore-debug.log
 ui-debug.log
 .firebaserc
 firebase-export-*
+service-account-key.json
 
 # Build files
 /build

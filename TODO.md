@@ -1,5 +1,29 @@
 # IQRA Application - Pending Features and Enhancements
 
+## Iqra Books Integration Priority Tasks
+- [ ] Firebase Storage Setup
+  - Setup storage structure for PDFs and PNGs
+  - Implement access control rules
+  - Configure caching and optimization
+
+- [ ] Teaching Interface Development
+  - PNG page viewer component
+  - PDF reference viewer
+  - Page navigation system
+  - Teaching tools implementation
+
+- [ ] Progress Tracking System
+  - Student progress database schema
+  - Progress tracking components
+  - Analytics and reporting
+  - Performance monitoring
+
+- [ ] Teaching Materials Management
+  - Book and page organization
+  - Teaching notes system
+  - Custom exercises
+  - Resource versioning
+
 ## Authentication & User Management
 - [ ] Parent-Student Account Linking
   - Link multiple children to parent account
