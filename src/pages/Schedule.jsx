@@ -1,348 +1,531 @@
 import React, { useState, useEffect } from 'react';
+import { useTheme } from '@mui/material/styles';
 import {
   Container,
-  Paper,
-  Typography,
   Box,
+  Typography,
   Button,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  TextField,
-  useTheme,
   Grid,
   Card,
   CardContent,
+  Alert,
+  CircularProgress,
+  Tabs,
+  Tab,
+  Paper,
   IconButton,
-  Autocomplete,
-  Chip,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemAvatar,
+  Avatar,
+  Tooltip,
+  Popover,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Badge
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   Event as EventIcon,
-  Group as GroupIcon,
-  Book as BookIcon,
+  VideoCall as VideoCallIcon,
+  People as PeopleIcon,
+  Person as PersonIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
-import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  addDoc,
-  deleteDoc,
-  doc,
-  updateDoc,
-} from 'firebase/firestore';
+import { getSchedules } from '../services/scheduleService';
+import SchedulingWizard from '../features/iqra/components/schedule/SchedulingWizard';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
 
 const Schedule = () => {
   const theme = useTheme();
   const { currentUser } = useAuth();
   const [schedules, setSchedules] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [selectedSchedule, setSelectedSchedule] = useState(null);
-  const [formData, setFormData] = useState({
-    classId: null,
-    startTime: new Date(),
-    endTime: new Date(Date.now() + 3600000), // 1 hour from now
-    location: '',
-    notes: '',
-  });
+  const [openWizard, setOpenWizard] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState('list');
+  const [classDetails, setClassDetails] = useState({});
+  const [courses, setCourses] = useState({});
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedStudents, setSelectedStudents] = useState([]);
+  const [currentWeek, setCurrentWeek] = useState(new Date());
 
   useEffect(() => {
-    fetchSchedules();
-    fetchClasses();
+    if (currentUser) {
+      const loadData = async () => {
+        await fetchSchedules();
+        await fetchCourses();
+        await fetchClassDetails();
+      };
+      loadData();
+    }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (schedules.length > 0) {
+      fetchClassDetails();
+    }
+  }, [schedules]);
+
+  const fetchCourses = async () => {
+    try {
+      const coursesRef = collection(db, 'courses');
+      const querySnapshot = await getDocs(coursesRef);
+      const coursesData = {};
+      querySnapshot.forEach((doc) => {
+        coursesData[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setCourses(coursesData);
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+    }
+  };
 
   const fetchSchedules = async () => {
     try {
-      const schedulesRef = collection(db, 'schedules');
-      const q = query(
-        schedulesRef,
-        where('teacherId', '==', currentUser.uid)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const fetchedSchedules = [];
-      querySnapshot.forEach((doc) => {
-        fetchedSchedules.push({ id: doc.id, ...doc.data() });
-      });
-      
-      // Sort by start time
-      fetchedSchedules.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+      setLoading(true);
+      setError('');
+      const fetchedSchedules = await getSchedules(currentUser.uid, currentUser.role);
       setSchedules(fetchedSchedules);
     } catch (error) {
       console.error('Error fetching schedules:', error);
-      setError('Failed to load schedules');
+      setError('Failed to fetch schedules');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchClasses = async () => {
+  const fetchClassDetails = async () => {
     try {
-      const classesRef = collection(db, 'classes');
-      const q = query(
-        classesRef,
-        where('teacherId', '==', currentUser.uid)
-      );
+      // First get the schedules' class IDs
+      const classIds = schedules.map(schedule => schedule.classId);
       
-      const querySnapshot = await getDocs(q);
-      const fetchedClasses = [];
-      querySnapshot.forEach((doc) => {
-        fetchedClasses.push({ id: doc.id, ...doc.data() });
-      });
-      setClasses(fetchedClasses);
-    } catch (error) {
-      console.error('Error fetching classes:', error);
-    }
-  };
-
-  const handleOpenDialog = (schedule = null) => {
-    if (schedule) {
-      setSelectedSchedule(schedule);
-      setFormData({
-        classId: schedule.classId,
-        startTime: new Date(schedule.startTime),
-        endTime: new Date(schedule.endTime),
-        location: schedule.location || '',
-        notes: schedule.notes || '',
-      });
-    } else {
-      setSelectedSchedule(null);
-      setFormData({
-        classId: null,
-        startTime: new Date(),
-        endTime: new Date(Date.now() + 3600000),
-        location: '',
-        notes: '',
-      });
-    }
-    setOpenDialog(true);
-  };
-
-  const handleCloseDialog = () => {
-    setOpenDialog(false);
-    setSelectedSchedule(null);
-    setError('');
-  };
-
-  const handleSubmit = async () => {
-    try {
-      if (!formData.classId) {
-        setError('Please select a class');
+      if (classIds.length === 0) {
+        console.log('No schedules found');
         return;
       }
 
-      if (formData.endTime <= formData.startTime) {
-        setError('End time must be after start time');
-        return;
+      console.log('Fetching details for classes:', classIds);
+      
+      // Only fetch the classes that are in the schedules
+      const classesRef = collection(db, 'classes');
+      const classesQuery = query(classesRef, where('__name__', 'in', classIds));
+      const classesSnapshot = await getDocs(classesQuery);
+      const details = {};
+      
+      for (const doc of classesSnapshot.docs) {
+        const classData = doc.data();
+        console.log('Class data for', doc.id, ':', classData);
+        
+        // Get student details
+        const studentIds = classData.studentIds || [];
+        let students = [];
+        
+        if (studentIds.length > 0) {
+          try {
+            const usersRef = collection(db, 'users');
+            // Fetch all students in one query
+            const studentsQuery = query(usersRef, where('__name__', 'in', studentIds));
+            const studentsSnapshot = await getDocs(studentsQuery);
+            
+            students = studentsSnapshot.docs.map(userDoc => {
+              const userData = userDoc.data();
+              return {
+                id: userDoc.id,
+                name: userData.displayName || userData.name || userData.email || 'Unknown Student',
+                email: userData.email,
+                photoURL: userData.photoURL,
+              };
+            });
+            console.log('Fetched students for class', doc.id, ':', students);
+          } catch (error) {
+            console.error('Error fetching students for class', doc.id, ':', error);
+          }
+        }
+
+        // Get course name
+        let courseName = 'General Course';
+        if (classData.courseId && courses[classData.courseId]) {
+          courseName = courses[classData.courseId].name || courses[classData.courseId].title || 'General Course';
+        }
+
+        details[doc.id] = {
+          id: doc.id,
+          name: classData.name || 'Untitled Class',
+          students: students,
+          courseName: courseName,
+          description: classData.description || '',
+        };
       }
-
-      const scheduleData = {
-        ...formData,
-        teacherId: currentUser.uid,
-        status: 'scheduled',
-      };
-
-      if (selectedSchedule) {
-        await updateDoc(doc(db, 'schedules', selectedSchedule.id), scheduleData);
-      } else {
-        await addDoc(collection(db, 'schedules'), scheduleData);
-      }
-
-      handleCloseDialog();
-      fetchSchedules();
+      
+      console.log('Final class details:', details);
+      setClassDetails(details);
     } catch (error) {
-      console.error('Error saving schedule:', error);
-      setError('Failed to save schedule');
+      console.error('Error fetching class details:', error);
     }
   };
 
-  const handleDelete = async (scheduleId) => {
-    try {
-      await deleteDoc(doc(db, 'schedules', scheduleId));
-      fetchSchedules();
-    } catch (error) {
-      console.error('Error deleting schedule:', error);
-      setError('Failed to delete schedule');
-    }
+  const handleWizardComplete = () => {
+    setOpenWizard(false);
+    fetchSchedules();
   };
 
-  const getClassName = (classId) => {
-    const class_ = classes.find(c => c.id === classId);
-    return class_ ? class_.name : 'Unknown Class';
+  const formatTime = (timeString) => {
+    return new Date(timeString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleStudentsClick = (event, students) => {
+    setSelectedStudents(students);
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handlePopoverClose = () => {
+    setAnchorEl(null);
+  };
+
+  const renderListView = () => (
+    <Grid container spacing={3}>
+      {schedules.map((schedule) => {
+        const classInfo = classDetails[schedule.classId] || {};
+        console.log('Rendering schedule:', schedule);
+        console.log('Class info:', classInfo);
+        return (
+          <Grid item xs={12} key={schedule.id}>
+            <Card sx={{ 
+              bgcolor: 'background.paper',
+              '&:hover': { bgcolor: 'background.paper' }
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" component="div" sx={{ color: 'white' }}>
+                    {classInfo.name || 'Untitled Class'}
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Tooltip title={`${classInfo.students?.length || 0} Students`}>
+                      <IconButton 
+                        onClick={(e) => handleStudentsClick(e, classInfo.students || [])}
+                        size="small"
+                        sx={{ color: 'white' }}
+                      >
+                        <Badge 
+                          badgeContent={classInfo.students?.length || 0} 
+                          color="primary"
+                        >
+                          <PeopleIcon />
+                        </Badge>
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+                
+                <Typography 
+                  variant="subtitle1" 
+                  sx={{ 
+                    color: theme.palette.primary.main,
+                    mb: 2 
+                  }}
+                >
+                  {classInfo.courseName}
+                </Typography>
+
+                <Box sx={{ mt: 2 }}>
+                  {schedule.daysOfWeek.map((day) => (
+                    <Box 
+                      key={day} 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        mb: 1,
+                        p: 1,
+                        borderRadius: 1,
+                        '&:hover': { bgcolor: 'action.hover' }
+                      }}
+                    >
+                      <EventIcon sx={{ mr: 2, color: 'white' }} />
+                      <Typography sx={{ flex: 1, color: 'white' }}>
+                        {DAYS[day]}
+                        {' - '}
+                        {formatTime(schedule.timeSlots[day])}
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<VideoCallIcon />}
+                        href={schedule.meetLink || '#'}
+                        target="_blank"
+                        sx={{ 
+                          ml: 2,
+                          bgcolor: theme.palette.primary.main,
+                          '&:hover': {
+                            bgcolor: theme.palette.primary.dark,
+                          }
+                        }}
+                      >
+                        Join Class
+                      </Button>
+                    </Box>
+                  ))}
+                </Box>
+
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    mt: 2,
+                    color: 'text.secondary',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5
+                  }}
+                >
+                  <Box component="span" sx={{ color: 'text.secondary' }}>
+                    Duration: {schedule.duration} minutes
+                  </Box>
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        );
+      })}
+    </Grid>
+  );
+
+  const renderStudentsList = (students) => (
+    <List sx={{ 
+      width: 300, 
+      maxHeight: 400, 
+      overflow: 'auto', 
+      bgcolor: 'background.paper',
+      borderRadius: 1,
+      p: 0
+    }}>
+      {students.length === 0 ? (
+        <ListItem>
+          <ListItemText 
+            primary="No students enrolled" 
+            sx={{ 
+              textAlign: 'center',
+              color: 'text.secondary'
+            }} 
+          />
+        </ListItem>
+      ) : (
+        students.map((student) => (
+          <ListItem key={student.id} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <ListItemAvatar>
+              <Avatar src={student.photoURL} sx={{ bgcolor: theme.palette.primary.main }}>
+                {student.name?.charAt(0) || <PersonIcon />}
+              </Avatar>
+            </ListItemAvatar>
+            <ListItemText
+              primary={student.name}
+              secondary={student.email}
+              primaryTypographyProps={{ 
+                sx: { 
+                  color: 'white',
+                  fontWeight: 'medium'
+                } 
+              }}
+              secondaryTypographyProps={{ 
+                sx: { 
+                  color: 'text.secondary',
+                  fontSize: '0.875rem'
+                } 
+              }}
+            />
+          </ListItem>
+        ))
+      )}
+    </List>
+  );
+
+  const getWeekDates = () => {
+    const dates = [];
+    const startOfWeek = new Date(currentWeek);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + i);
+      dates.push(date);
+    }
+    return dates;
+  };
+
+  const renderCalendarView = () => {
+    const weekDates = getWeekDates();
+    const schedulesByTime = {};
+
+    // Organize schedules by time slot
+    schedules.forEach(schedule => {
+      const classInfo = classDetails[schedule.classId] || {};
+      schedule.daysOfWeek.forEach(day => {
+        const time = new Date(schedule.timeSlots[day]);
+        const timeKey = time.getHours().toString().padStart(2, '0') + ':00';
+        if (!schedulesByTime[timeKey]) {
+          schedulesByTime[timeKey] = Array(7).fill(null);
+        }
+        schedulesByTime[timeKey][day] = {
+          className: classInfo.name,
+          courseName: classInfo.courseName,
+          meetLink: schedule.meetLink,
+          duration: schedule.duration,
+        };
+      });
+    });
+
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <IconButton onClick={() => {
+            const newDate = new Date(currentWeek);
+            newDate.setDate(newDate.getDate() - 7);
+            setCurrentWeek(newDate);
+          }}>
+            <ChevronLeftIcon />
+          </IconButton>
+          <Typography variant="h6">
+            {weekDates[0].toLocaleDateString()} - {weekDates[6].toLocaleDateString()}
+          </Typography>
+          <IconButton onClick={() => {
+            const newDate = new Date(currentWeek);
+            newDate.setDate(newDate.getDate() + 7);
+            setCurrentWeek(newDate);
+          }}>
+            <ChevronRightIcon />
+          </IconButton>
+        </Box>
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Time</TableCell>
+                {DAYS.map(day => (
+                  <TableCell key={day} align="center">{day}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {TIME_SLOTS.map(timeSlot => (
+                <TableRow key={timeSlot}>
+                  <TableCell>{timeSlot}</TableCell>
+                  {Array.from({ length: 7 }, (_, dayIndex) => {
+                    const schedule = schedulesByTime[timeSlot]?.[dayIndex];
+                    return (
+                      <TableCell key={dayIndex} align="center">
+                        {schedule && (
+                          <Box>
+                            <Typography variant="body2" noWrap>
+                              {schedule.className}
+                            </Typography>
+                            {schedule.meetLink && (
+                              <Button
+                                size="small"
+                                startIcon={<VideoCallIcon />}
+                                href={schedule.meetLink}
+                                target="_blank"
+                              >
+                                Join
+                              </Button>
+                            )}
+                          </Box>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    );
   };
 
   return (
-    <Container
-      maxWidth="lg"
-      sx={{
-        mt: 4,
-        mb: 4,
-        minHeight: '100vh',
-        backgroundColor: theme.palette.background.default,
-        color: theme.palette.text.primary,
-      }}
-    >
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-          <Typography variant="h4">Schedule Management</Typography>
+    <Container maxWidth="lg">
+      <Box sx={{ mt: 4, mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" component="h1">
+            Class Schedule
+          </Typography>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
+            onClick={() => setOpenWizard(true)}
           >
-            Create Schedule
+            Schedule New Class
           </Button>
         </Box>
 
-        <Grid container spacing={3}>
-          {schedules.map((schedule) => (
-            <Grid item xs={12} md={6} key={schedule.id}>
-              <Card
-                component={motion.div}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                sx={{
-                  backgroundColor: theme.palette.background.paper,
-                  color: theme.palette.text.primary,
-                }}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="h6">{getClassName(schedule.classId)}</Typography>
-                    <Box>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenDialog(schedule)}
-                        sx={{ mr: 1 }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(schedule.id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="body2" color="textSecondary">
-                      <EventIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                      {new Date(schedule.startTime).toLocaleString()}
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      <EventIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                      {new Date(schedule.endTime).toLocaleString()}
-                    </Typography>
-                  </Box>
-                  {schedule.location && (
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Location: {schedule.location}
-                    </Typography>
-                  )}
-                  {schedule.notes && (
-                    <Typography variant="body2" color="textSecondary">
-                      {schedule.notes}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
 
-      <Dialog
-        open={openDialog}
-        onClose={handleCloseDialog}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            backgroundColor: theme.palette.background.paper,
-            color: theme.palette.text.primary,
-          }
-        }}
-      >
-        <DialogTitle>
-          {selectedSchedule ? 'Edit Schedule' : 'Create New Schedule'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            {error && (
-              <Typography color="error" sx={{ mb: 2 }}>
-                {error}
-              </Typography>
-            )}
-            
-            <Autocomplete
-              options={classes}
-              getOptionLabel={(option) => option.name}
-              value={classes.find(c => c.id === formData.classId) || null}
-              onChange={(_, newValue) => setFormData({ ...formData, classId: newValue?.id })}
-              renderInput={(params) => (
-                <TextField {...params} label="Select Class" sx={{ mb: 2 }} />
-              )}
-              renderOption={(props, option) => (
-                <li {...props}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <GroupIcon sx={{ mr: 1 }} />
-                    <Typography>{option.name}</Typography>
-                  </Box>
-                </li>
-              )}
-            />
+        <Paper sx={{ mb: 3 }}>
+          <Tabs
+            value={view}
+            onChange={(_, newValue) => setView(newValue)}
+            indicatorColor="primary"
+            textColor="primary"
+            centered
+          >
+            <Tab value="list" label="List View" />
+            <Tab value="calendar" label="Calendar View" />
+          </Tabs>
+        </Paper>
 
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DateTimePicker
-                label="Start Time"
-                value={formData.startTime}
-                onChange={(newValue) => setFormData({ ...formData, startTime: newValue })}
-                renderInput={(params) => <TextField {...params} fullWidth sx={{ mb: 2 }} />}
-              />
-              <DateTimePicker
-                label="End Time"
-                value={formData.endTime}
-                onChange={(newValue) => setFormData({ ...formData, endTime: newValue })}
-                renderInput={(params) => <TextField {...params} fullWidth sx={{ mb: 2 }} />}
-              />
-            </LocalizationProvider>
+        <Dialog
+          open={openWizard}
+          onClose={() => setOpenWizard(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>Schedule Class Sessions</DialogTitle>
+          <DialogContent>
+            <SchedulingWizard onComplete={handleWizardComplete} />
+          </DialogContent>
+        </Dialog>
 
-            <TextField
-              fullWidth
-              label="Location"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              sx={{ mb: 2 }}
-            />
+        <Popover
+          open={Boolean(anchorEl)}
+          anchorEl={anchorEl}
+          onClose={handlePopoverClose}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'center',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'center',
+          }}
+        >
+          {renderStudentsList(selectedStudents)}
+        </Popover>
 
-            <TextField
-              fullWidth
-              label="Notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              multiline
-              rows={3}
-            />
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <CircularProgress />
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSubmit} variant="contained">
-            {selectedSchedule ? 'Update' : 'Create'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        ) : (
+          view === 'list' ? renderListView() : renderCalendarView()
+        )}
+      </Box>
     </Container>
   );
 };

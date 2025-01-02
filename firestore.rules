@@ -136,6 +136,74 @@ service cloud.firestore {
       }
     }
 
+    // Schedules collection
+    match /schedules/{scheduleId} {
+      allow create: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserData().role in ['teacher', 'admin']) &&
+        exists(/databases/$(database)/documents/classes/$(request.resource.data.classId)) &&
+        get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.teacherId == request.auth.uid;
+      
+      allow read: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData().role == 'admin' ||
+          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid) ||
+          (
+            getUserData().role == 'student' && 
+            exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+            request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+          )
+        );
+      
+      allow update: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData().role == 'admin' ||
+          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
+      
+      allow delete: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData().role == 'admin' ||
+          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
+    }
+
+    // Sessions collection (for individual class sessions)
+    match /sessions/{sessionId} {
+      allow create: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserData().role in ['teacher', 'admin']);
+      
+      allow read: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData().role == 'admin' ||
+          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid) ||
+          (
+            getUserData().role == 'student' && 
+            exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+            request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+          )
+        );
+      
+      allow update: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData().role == 'admin' ||
+          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
+      
+      allow delete: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData().role == 'admin' ||
+          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
+    }
+
     // Course materials collection
     match /materials/{materialId} {
       allow read: if true;

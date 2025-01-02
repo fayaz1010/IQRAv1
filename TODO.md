@@ -72,6 +72,32 @@
   - Schedule reminders
   - Class notifications
 
+## Class Scheduling System Priority Tasks
+- [ ] Scheduling Interface Development
+  - Create scheduling wizard components
+  - Implement step-by-step scheduling flow
+  - Build teacher availability calendar
+  - Add conflict detection
+  - Develop schedule preview
+  
+- [ ] Google Services Integration
+  - Setup Google Calendar batch operations
+  - Implement Meet link generation
+  - Add calendar invite system
+  - Create email notification templates
+  
+- [ ] Database Schema Updates
+  - Schedule configuration collection
+  - Sessions collection
+  - Availability patterns collection
+  - Notification preferences
+  
+- [ ] Dashboard Enhancements
+  - Add upcoming classes widget
+  - Create schedule overview
+  - Implement quick actions
+  - Add notification center
+
 ## Parent Dashboard Features
 - [ ] Multi-Child Dashboard
   - Individual progress tracking
