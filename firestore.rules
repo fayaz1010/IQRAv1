@@ -34,6 +34,18 @@ service cloud.firestore {
         getUserData().role == 'parent';
     }
 
+    function isTeacherOfClass(classId) {
+      return isTeacher() && 
+        exists(/databases/$(database)/documents/classes/$(classId)) &&
+        get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid;
+    }
+
+    function isStudentInClass(classId) {
+      return isStudent() &&
+        exists(/databases/$(database)/documents/classes/$(classId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds;
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -202,6 +214,22 @@ service cloud.firestore {
           getUserData().role == 'admin' ||
           (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
         );
+    }
+
+    // Drawings collection
+    match /drawings/{drawingId} {
+      allow read: if isAuthenticated() &&
+        (isTeacherOfClass(resource.data.classId) || 
+         isStudentInClass(resource.data.classId) ||
+         (isStudent() && resource.data.studentId == request.auth.uid));
+      
+      allow create, update: if isAuthenticated() &&
+        (isTeacherOfClass(request.resource.data.classId) || 
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
+      
+      allow delete: if isAuthenticated() &&
+        (isTeacherOfClass(resource.data.classId) || 
+         (isStudent() && resource.data.studentId == request.auth.uid));
     }
 
     // Course materials collection

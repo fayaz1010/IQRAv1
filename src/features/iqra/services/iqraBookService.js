@@ -34,7 +34,9 @@ export const IqraBookService = {
   async getPageUrl(bookId, pageNumber) {
     try {
       console.log('Getting page URL for book:', bookId, 'page:', pageNumber);
-      const pageRef = ref(storage, `iqra-books/${bookId}/pages/page_${pageNumber}.png`);
+      // Convert "Iqra Book 1" to "iqra-1" format
+      const normalizedBookId = bookId.toLowerCase().replace(/\s+book\s+/i, '-');
+      const pageRef = ref(storage, `iqra-books/${normalizedBookId}/pages/page_${pageNumber}.png`);
       console.log('Page storage path:', pageRef.fullPath);
       const url = await getDownloadURL(pageRef);
       console.log('Page URL retrieved successfully');

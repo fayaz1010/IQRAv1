@@ -17,22 +17,32 @@ service firebase.storage {
         request.auth.token.role == 'teacher';
     }
 
-    // Iqra books storage - allow read for all authenticated users
+    function isStudent() {
+      return isAuthenticated() && 
+        request.auth.token.role == 'student';
+    }
+
+    // Iqra books storage - allow read for authenticated users
     match /iqra-books/{bookId}/{allPaths=**} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
-    // Student recordings and materials
-    match /student-materials/{userId}/{allPaths=**} {
+    // User uploads
+    match /users/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isTeacher() || isAdmin() || request.auth.uid == userId;
+      allow write: if request.auth.uid == userId;
     }
 
-    // Teaching materials
-    match /teaching-materials/{allPaths=**} {
+    // Course materials
+    match /materials/{materialId}/{allPaths=**} {
       allow read: if isAuthenticated();
       allow write: if isTeacher() || isAdmin();
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

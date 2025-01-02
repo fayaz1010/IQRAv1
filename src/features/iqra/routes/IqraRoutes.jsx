@@ -1,10 +1,12 @@
 import React, { Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
-import IqraBookViewer from '../components/IqraBookViewer';
-import IqraTeaching from '../components/IqraTeaching';
-import TeachingSession from '../components/teaching/TeachingSession';
 import { SessionProvider } from '../contexts/SessionContext';
+
+// Lazy load components
+const IqraTeaching = React.lazy(() => import('../components/IqraTeaching'));
+const IqraBookViewer = React.lazy(() => import('../components/IqraBookViewer'));
+const TeachingSession = React.lazy(() => import('../components/teaching/TeachingSession'));
 
 // Loading screen shown while components are loading
 const LoadingScreen = () => (
@@ -17,31 +19,45 @@ const IqraRoutes = () => {
   return (
     <SessionProvider>
       <Routes>
+        {/* Main teaching dashboard */}
         <Route
-          path="/classes/iqra"
+          path="/"
           element={
             <Suspense fallback={<LoadingScreen />}>
               <IqraTeaching />
             </Suspense>
           }
         />
+
+        {/* Active teaching session */}
         <Route
-          path="/classes/iqra/teaching/:studentId"
+          path="/teaching/:studentId"
           element={
             <Suspense fallback={<LoadingScreen />}>
               <IqraTeaching />
             </Suspense>
           }
         />
+
+        {/* Book viewer */}
         <Route
-          path="/iqra/book/:bookId"
+          path="/book/:bookId"
           element={
             <Suspense fallback={<LoadingScreen />}>
               <IqraBookViewer />
             </Suspense>
           }
         />
-        <Route path="/teach/:classId" element={<TeachingSession bookId="iqra-book-1" />} />
+
+        {/* Teaching session */}
+        <Route
+          path="/teach/:classId"
+          element={
+            <Suspense fallback={<LoadingScreen />}>
+              <TeachingSession />
+            </Suspense>
+          }
+        />
       </Routes>
     </SessionProvider>
   );

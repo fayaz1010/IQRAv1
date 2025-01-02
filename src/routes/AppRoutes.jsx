@@ -3,7 +3,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout/Layout';
 import { CircularProgress, Box } from '@mui/material';
-import { SessionProvider } from '../features/iqra/contexts/SessionContext';
 
 // Lazy load components
 const Dashboard = React.lazy(() => import('../pages/Dashboard'));
@@ -16,12 +15,10 @@ const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
 const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
 const LandingPage = React.lazy(() => import('../pages/public/LandingPage'));
 const Settings = React.lazy(() => import('../pages/settings/Settings'));
-const TeachingSession = React.lazy(() => import('../features/iqra/components/teaching/TeachingSession'));
-const IqraBookViewer = React.lazy(() => import('../features/iqra/components/IqraBookViewer'));
-const IqraTeaching = React.lazy(() => import('../features/iqra/components/IqraTeaching'));
 const Classes = React.lazy(() => import('../pages/Classes'));
 const Courses = React.lazy(() => import('../pages/Courses'));
 const Materials = React.lazy(() => import('../pages/Materials'));
+const IqraRoutes = React.lazy(() => import('../features/iqra/routes/IqraRoutes'));
 
 // Loading screen
 const LoadingScreen = () => (
@@ -166,28 +163,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/classes/iqra"
-        element={
-          <ProtectedRoute allowedRoles={['teacher']}>
-            <Suspense fallback={<LoadingScreen />}>
-              <IqraTeaching />
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/teach/:classId"
-        element={
-          <ProtectedRoute allowedRoles={['teacher']}>
-            <Suspense fallback={<LoadingScreen />}>
-              <SessionProvider>
-                <TeachingSession />
-              </SessionProvider>
-            </Suspense>
-          </ProtectedRoute>
-        }
-      />
 
       {/* Admin routes */}
       <Route
@@ -242,12 +217,14 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+
+      {/* Iqra Teaching Routes */}
       <Route
-        path="/learn/iqra/:bookId"
+        path="/classes/iqra/*"
         element={
-          <ProtectedRoute allowedRoles={['student', 'teacher']}>
+          <ProtectedRoute allowedRoles={['teacher', 'admin']}>
             <Suspense fallback={<LoadingScreen />}>
-              <IqraBookViewer />
+              <IqraRoutes />
             </Suspense>
           </ProtectedRoute>
         }

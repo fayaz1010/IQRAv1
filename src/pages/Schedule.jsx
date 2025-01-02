@@ -160,7 +160,7 @@ const Schedule = () => {
         // Get course name
         let courseName = 'General Course';
         if (classData.courseId && courses[classData.courseId]) {
-          courseName = courses[classData.courseId].name || courses[classData.courseId].title || 'General Course';
+          courseName = courses[classData.courseId].title || 'General Course';
         }
 
         details[doc.id] = {

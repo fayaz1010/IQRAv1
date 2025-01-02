@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { db } from '../../../config/firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 
 export const SessionContext = createContext(null);
 
@@ -14,8 +14,9 @@ export function useSession() {
 }
 
 export function SessionProvider({ children }) {
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
   const [activeSession, setActiveSession] = useState(null);
+  const [activeClass, setActiveClass] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -24,19 +25,9 @@ export function SessionProvider({ children }) {
     setLoading(false);
   }, []);
 
-  // Start a new teaching session
-  const startSession = async (classId, bookId, initialPage = 1) => {
+  const loadClassData = async (classId) => {
     try {
-      const sessionData = {
-        date: new Date().toISOString(),
-        startTime: new Date().toLocaleTimeString(),
-        book: bookId,
-        startPage: initialPage,
-        endPage: initialPage,
-        studentProgress: {}
-      };
-
-      // Get class data to initialize student progress
+      // Get class data
       const classRef = doc(db, 'classes', classId);
       const classDoc = await getDoc(classRef);
       
@@ -45,8 +36,50 @@ export function SessionProvider({ children }) {
       }
 
       const classData = classDoc.data();
-      classData.students.forEach(studentId => {
-        sessionData.studentProgress[studentId] = {
+
+      // Get course data
+      const courseRef = doc(db, 'courses', classData.courseId);
+      const courseDoc = await getDoc(courseRef);
+      
+      if (!courseDoc.exists()) {
+        throw new Error('Course not found');
+      }
+
+      const courseData = courseDoc.data();
+
+      // Combine class and course data
+      const combinedData = {
+        ...classData,
+        id: classId,
+        course: {
+          id: classData.courseId,
+          ...courseData
+        }
+      };
+
+      setActiveClass(combinedData);
+      return combinedData;
+    } catch (error) {
+      console.error('Error loading class data:', error);
+      throw error;
+    }
+  };
+
+  // Start a new teaching session
+  const startSession = async (classId, bookId, initialPage = 1) => {
+    try {
+      // Load class and course data first
+      const classData = await loadClassData(classId);
+      
+      if (!classData.course?.iqraBooks?.includes(bookId)) {
+        throw new Error('Selected book is not in the course');
+      }
+
+      const studentProgress = {};
+
+      // Initialize progress for all students in the class
+      (classData.studentIds || []).forEach(studentId => {
+        studentProgress[studentId] = {
           currentPage: initialPage,
           drawings: {},
           notes: {},
@@ -58,100 +91,104 @@ export function SessionProvider({ children }) {
         };
       });
 
-      // Create new session document
-      const sessionRef = doc(classRef, 'sessions', new Date().toISOString());
-      await setDoc(sessionRef, sessionData);
-
-      setActiveSession({
-        id: sessionRef.id,
+      const sessionData = {
+        teacherId: currentUser.uid,
         classId,
-        ...sessionData
-      });
-
-      return sessionRef.id;
-    } catch (error) {
-      setError(error.message);
-      throw error;
-    }
-  };
-
-  // Save drawing for a student
-  const saveDrawing = async (studentId, pageNumber, drawingData) => {
-    if (!activeSession) {
-      throw new Error('No active session');
-    }
-
-    try {
-      const sessionRef = doc(db, 'classes', activeSession.classId, 'sessions', activeSession.id);
-      await updateDoc(sessionRef, {
-        [`studentProgress.${studentId}.drawings.${pageNumber}`]: drawingData
-      });
-    } catch (error) {
-      setError(error.message);
-      throw error;
-    }
-  };
-
-  // Update student progress
-  const updateStudentProgress = async (studentId, pageNumber, assessmentData = null) => {
-    if (!activeSession) {
-      throw new Error('No active session');
-    }
-
-    try {
-      const sessionRef = doc(db, 'classes', activeSession.classId, 'sessions', activeSession.id);
-      const updates = {
-        [`studentProgress.${studentId}.currentPage`]: pageNumber
+        date: new Date().toISOString(),
+        startTime: new Date().toLocaleTimeString(),
+        book: bookId,
+        startPage: initialPage,
+        currentPage: initialPage,
+        endPage: initialPage,
+        status: 'active',
+        studentProgress,
+        groupMode: true // Indicates this is a class-wide session
       };
 
-      if (assessmentData) {
-        updates[`studentProgress.${studentId}.assessment`] = assessmentData;
-      }
+      // Create new session document
+      const sessionRef = doc(collection(db, 'sessions'));
+      await setDoc(sessionRef, sessionData);
 
-      await updateDoc(sessionRef, updates);
+      const session = {
+        id: sessionRef.id,
+        ...sessionData,
+        classData: classData
+      };
 
-      // Update session end page if this is the furthest page
-      if (pageNumber > activeSession.endPage) {
-        await updateDoc(sessionRef, {
-          endPage: pageNumber
-        });
-        setActiveSession(prev => ({
-          ...prev,
-          endPage: pageNumber
-        }));
-      }
+      setActiveSession(session);
+      return session;
     } catch (error) {
+      console.error('Error starting session:', error);
       setError(error.message);
       throw error;
     }
   };
 
-  // End the session
-  const endSession = async () => {
+  // Update page for the entire class
+  const updateClassProgress = async (pageNumber) => {
     if (!activeSession) {
       throw new Error('No active session');
     }
 
     try {
-      const sessionRef = doc(db, 'classes', activeSession.classId, 'sessions', activeSession.id);
+      const sessionRef = doc(db, 'sessions', activeSession.id);
       await updateDoc(sessionRef, {
-        endTime: new Date().toLocaleTimeString()
+        currentPage: pageNumber,
+        endPage: pageNumber,
+        'studentProgress': activeSession.studentProgress
       });
-      setActiveSession(null);
+
+      setActiveSession(prev => ({
+        ...prev,
+        currentPage: pageNumber,
+        endPage: pageNumber
+      }));
     } catch (error) {
-      setError(error.message);
+      console.error('Error updating class progress:', error);
+      throw error;
+    }
+  };
+
+  const saveDrawing = async (studentId, pageNumber, lines) => {
+    if (!activeSession) {
+      throw new Error('No active session');
+    }
+
+    try {
+      const sessionRef = doc(db, 'sessions', activeSession.id);
+      const drawingPath = `studentProgress.${studentId}.drawings.${pageNumber}`;
+      
+      await updateDoc(sessionRef, {
+        [drawingPath]: lines
+      });
+
+      setActiveSession(prev => ({
+        ...prev,
+        studentProgress: {
+          ...prev.studentProgress,
+          [studentId]: {
+            ...prev.studentProgress[studentId],
+            drawings: {
+              ...prev.studentProgress[studentId].drawings,
+              [pageNumber]: lines
+            }
+          }
+        }
+      }));
+    } catch (error) {
+      console.error('Error saving drawing:', error);
       throw error;
     }
   };
 
   const value = {
     activeSession,
+    activeClass,
     startSession,
+    updateClassProgress,
     saveDrawing,
-    updateStudentProgress,
-    endSession,
-    error,
-    loading
+    loading,
+    error
   };
 
   return (
