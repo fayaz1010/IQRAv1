@@ -575,7 +575,7 @@ const IqraTeaching = () => {
                 Teaching Session: {activeClass?.name}
               </Typography>
               <Typography variant="subtitle1" color="text.secondary">
-                {activeSession?.book} - Page {activeSession?.currentPage}
+                Course: {activeClass?.course?.title} | {activeSession?.book} - Page {activeSession?.currentPage}
               </Typography>
             </Box>
             <Box display="flex" alignItems="center" gap={2}>
