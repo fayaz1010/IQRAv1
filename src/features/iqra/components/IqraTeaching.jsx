@@ -28,7 +28,8 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Tooltip
+  Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -45,6 +46,7 @@ import {
   FullscreenExit,
   NavigateBefore,
   NavigateNext,
+  Stop as StopIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useSession } from '../contexts/SessionContext';
@@ -53,6 +55,7 @@ import { db } from '../../../config/firebase';
 import IqraBookViewer from './IqraBookViewer';
 import PracticeArea from './PracticeArea';
 import { Stage, Layer, Line } from 'react-konva';
+import EndSessionDialog from './EndSessionDialog';
 
 const IqraTeaching = () => {
   const { currentUser } = useAuth();
@@ -65,7 +68,8 @@ const IqraTeaching = () => {
     startSession, 
     activeSession, 
     activeClass,
-    updateClassProgress 
+    updateClassProgress,
+    endSession
   } = useSession();
 
   const [classes, setClasses] = useState([]);
@@ -80,6 +84,9 @@ const IqraTeaching = () => {
   const [drawingHistory, setDrawingHistory] = useState([]);
   const practiceAreaRef = React.createRef();
   const stageRef = React.createRef();
+
+  const [openEndSession, setOpenEndSession] = useState(false);
+  const [endingSession, setEndingSession] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -632,6 +639,16 @@ const IqraTeaching = () => {
                   ))}
                 </Select>
               </FormControl>
+
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<StopIcon />}
+                onClick={() => setOpenEndSession(true)}
+                disabled={!activeSession}
+              >
+                End Session
+              </Button>
             </Box>
           </Box>
         </Paper>
@@ -689,9 +706,16 @@ const IqraTeaching = () => {
         </Grid>
 
         {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
+          <Snackbar 
+            open={!!error} 
+            autoHideDuration={6000} 
+            onClose={() => setError(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          </Snackbar>
         )}
       </Box>
     );
@@ -787,6 +811,29 @@ const IqraTeaching = () => {
       
       {activeSession ? renderTeachingSession() : renderClassList()}
       {renderStudentDetailsDialog()}
+      <EndSessionDialog
+        open={openEndSession}
+        onClose={() => setOpenEndSession(false)}
+        students={activeClass?.students || []}
+        currentBook={activeSession?.book}
+        startPage={activeSession?.startPage}
+        endPage={activeSession?.currentPage}
+        loading={endingSession}
+        error={error}
+        onSave={async (feedback) => {
+          try {
+            setEndingSession(true);
+            await endSession(feedback);
+            setOpenEndSession(false);
+            // Redirect to dashboard or show success message
+          } catch (error) {
+            console.error('Error ending session:', error);
+            setError('Failed to end session: ' + error.message);
+          } finally {
+            setEndingSession(false);
+          }
+        }}
+      />
     </Box>
   );
 };

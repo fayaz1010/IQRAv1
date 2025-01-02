@@ -181,12 +181,75 @@ export function SessionProvider({ children }) {
     }
   };
 
+  const endSession = async (feedback) => {
+    if (!activeSession) {
+      throw new Error('No active session');
+    }
+
+    try {
+      const sessionRef = doc(db, 'sessions', activeSession.id);
+      
+      // Update session with end time, status and feedback
+      await updateDoc(sessionRef, {
+        endTime: new Date().toISOString(),
+        status: 'completed',
+        feedback: {
+          classNotes: feedback.classNotes,
+          studentFeedback: feedback.studentFeedback
+        }
+      });
+
+      // Update student progress in the class document
+      const classRef = doc(db, 'classes', activeSession.classId);
+      const classDoc = await getDoc(classRef);
+      
+      if (classDoc.exists()) {
+        const classData = classDoc.data();
+        const updatedProgress = { ...classData.studentProgress };
+
+        // Update each student's progress
+        Object.entries(feedback.studentFeedback).forEach(([studentId, data]) => {
+          if (!updatedProgress[studentId]) {
+            updatedProgress[studentId] = {
+              sessions: [],
+              assessments: []
+            };
+          }
+
+          // Add session assessment
+          updatedProgress[studentId].assessments.push({
+            sessionId: activeSession.id,
+            date: new Date().toISOString(),
+            book: activeSession.book,
+            startPage: activeSession.startPage,
+            endPage: activeSession.currentPage,
+            assessment: data.assessment,
+            notes: data.notes
+          });
+        });
+
+        // Update class document
+        await updateDoc(classRef, {
+          studentProgress: updatedProgress
+        });
+      }
+
+      // Clear active session
+      setActiveSession(null);
+      setActiveClass(null);
+    } catch (error) {
+      console.error('Error ending session:', error);
+      throw error;
+    }
+  };
+
   const value = {
     activeSession,
     activeClass,
     startSession,
     updateClassProgress,
     saveDrawing,
+    endSession,
     loading,
     error
   };

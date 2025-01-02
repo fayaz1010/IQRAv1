@@ -1,48 +1,86 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Line } from 'react-konva';
-import {
-  Box,
-  IconButton,
-  ButtonGroup,
-  Tooltip,
+import React, { useState, useEffect, useRef } from 'react';
+import { Stage, Layer, Line, Rect } from 'react-konva';
+import { 
+  Box, 
+  IconButton, 
+  Paper, 
+  Tooltip, 
+  Divider,
   Slider,
   Typography,
-  Paper,
+  useTheme
 } from '@mui/material';
 import {
-  Brush,
-  Undo,
-  Delete as Clear,
-  Save,
-  RadioButtonUnchecked,
+  Brush as BrushIcon,
+  RadioButtonUnchecked as DotIcon,
+  GridOn as GridIcon,
+  GridOff as GridOffIcon,
+  Save as SaveIcon,
+  Undo as UndoIcon,
+  Redo as RedoIcon,
+  Delete as ClearIcon,
+  Edit as PencilIcon
 } from '@mui/icons-material';
 
-const DrawingCanvas = ({ onSave, readOnly = false }) => {
+const DrawingCanvas = ({ 
+  readOnly = false,
+  onSave,
+  savedDrawing = null,
+  width = 800,
+  height = 600,
+  initialStrokeWidth = 3,
+  initialColor = '#000000'
+}) => {
   const [lines, setLines] = useState([]);
+  const [tool, setTool] = useState('pencil');
   const [isDrawing, setIsDrawing] = useState(false);
-  const [tool, setTool] = useState('brush');
-  const [strokeWidth, setStrokeWidth] = useState(2);
-  const [color, setColor] = useState('#000000');
-  const stageRef = useRef(null);
-  const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
-  const containerRef = useRef(null);
+  const [showGrid, setShowGrid] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [historyStep, setHistoryStep] = useState(0);
   const [lastPointerPosition, setLastPointerPosition] = useState(null);
+  const [strokeWidth, setStrokeWidth] = useState(initialStrokeWidth);
+  const [color, setColor] = useState(initialColor);
+  const stageRef = useRef(null);
+  const theme = useTheme();
+
+  // Grid configuration
+  const gridSize = 20;
+  const gridColor = '#CCCCCC';
+  const gridStrokeWidth = 0.5;
 
   useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        const { offsetWidth, offsetHeight } = containerRef.current;
-        setStageSize({
-          width: offsetWidth - 20,
-          height: offsetHeight - 60
-        });
-      }
-    };
+    if (savedDrawing && savedDrawing.lines) {
+      setLines(savedDrawing.lines);
+      setHistory([savedDrawing.lines]);
+      setHistoryStep(0);
+    }
+  }, [savedDrawing]);
 
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
+  const addToHistory = (newLines) => {
+    const newHistory = history.slice(0, historyStep + 1);
+    newHistory.push(newLines);
+    setHistory(newHistory);
+    setHistoryStep(newHistory.length - 1);
+  };
+
+  const handleUndo = () => {
+    if (historyStep > 0) {
+      setHistoryStep(historyStep - 1);
+      setLines(history[historyStep - 1]);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyStep < history.length - 1) {
+      setHistoryStep(historyStep + 1);
+      setLines(history[historyStep + 1]);
+    }
+  };
+
+  const handleClear = () => {
+    setLines([]);
+    addToHistory([]);
+  };
 
   const handleMouseDown = (e) => {
     if (readOnly) return;
@@ -60,9 +98,10 @@ const DrawingCanvas = ({ onSave, readOnly = false }) => {
         color,
         isDot: true
       };
-      setLines([...lines, newDot]);
+      const newLines = [...lines, newDot];
+      setLines(newLines);
+      addToHistory(newLines);
     } else {
-      // For brush strokes, start drawing
       setIsDrawing(true);
       const newLine = {
         tool: 'brush',
@@ -95,73 +134,133 @@ const DrawingCanvas = ({ onSave, readOnly = false }) => {
   };
 
   const handleMouseUp = () => {
+    if (!isDrawing) return;
     setIsDrawing(false);
     setLastPointerPosition(null);
-  };
-
-  const handleUndo = () => {
-    setLines(lines.slice(0, -1));
-  };
-
-  const handleClear = () => {
-    setLines([]);
+    addToHistory([...lines]);
   };
 
   const handleSave = async () => {
     if (onSave) {
-      try {
-        await onSave(lines);
-      } catch (error) {
-        console.error('Error saving drawing:', error);
-      }
+      const drawingData = {
+        lines,
+        width,
+        height,
+        timestamp: new Date().toISOString()
+      };
+      await onSave(drawingData);
     }
   };
 
-  return (
-    <Box 
-      ref={containerRef} 
-      sx={{ 
-        width: '100%', 
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column'
-      }}
-    >
-      <Paper sx={{ p: 1, mb: 1 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <ButtonGroup>
-            <Tooltip title="Brush">
-              <IconButton 
-                color={tool === 'brush' ? 'primary' : 'default'}
-                onClick={() => setTool('brush')}
-                disabled={readOnly}
-              >
-                <Brush />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Dot">
-              <IconButton 
-                color={tool === 'dot' ? 'primary' : 'default'}
-                onClick={() => setTool('dot')}
-                disabled={readOnly}
-              >
-                <RadioButtonUnchecked />
-              </IconButton>
-            </Tooltip>
-          </ButtonGroup>
+  // Generate grid lines
+  const gridLines = showGrid ? Array.from({ length: Math.floor(width / gridSize) + Math.floor(height / gridSize) }, (_, i) => {
+    const isVertical = i < Math.floor(width / gridSize);
+    return {
+      points: isVertical 
+        ? [i * gridSize, 0, i * gridSize, height]
+        : [0, (i - Math.floor(width / gridSize)) * gridSize, width, (i - Math.floor(width / gridSize)) * gridSize],
+      stroke: gridColor,
+      strokeWidth: gridStrokeWidth
+    };
+  }) : [];
 
-          <Box sx={{ width: 200, mx: 2 }}>
-            <Typography gutterBottom>Stroke Width</Typography>
+  return (
+    <Box sx={{ position: 'relative' }}>
+      <Paper 
+        elevation={3}
+        sx={{ 
+          p: 1.5,
+          mb: 2,
+          display: 'flex',
+          gap: 2,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: (theme) => theme.palette.mode === 'dark' ? '#333' : '#f8f9fa',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: (theme) => theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'
+        }}
+      >
+        {/* Drawing Tools */}
+        <Box display="flex" gap={1}>
+          <Tooltip title="Pencil Tool">
+            <IconButton 
+              onClick={() => setTool('pencil')}
+              color={tool === 'pencil' ? 'primary' : 'default'}
+              sx={{
+                backgroundColor: tool === 'pencil' ? (theme) => 
+                  theme.palette.mode === 'dark' ? 'rgba(144, 202, 249, 0.16)' : 'rgba(33, 150, 243, 0.08)' : 'transparent'
+              }}
+            >
+              <PencilIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Brush Tool">
+            <IconButton 
+              onClick={() => setTool('brush')}
+              color={tool === 'brush' ? 'primary' : 'default'}
+              sx={{
+                backgroundColor: tool === 'brush' ? (theme) => 
+                  theme.palette.mode === 'dark' ? 'rgba(144, 202, 249, 0.16)' : 'rgba(33, 150, 243, 0.08)' : 'transparent'
+              }}
+            >
+              <BrushIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Dot Tool">
+            <IconButton 
+              onClick={() => setTool('dot')}
+              color={tool === 'dot' ? 'primary' : 'default'}
+              sx={{
+                backgroundColor: tool === 'dot' ? (theme) => 
+                  theme.palette.mode === 'dark' ? 'rgba(144, 202, 249, 0.16)' : 'rgba(33, 150, 243, 0.08)' : 'transparent'
+              }}
+            >
+              <DotIcon />
+            </IconButton>
+          </Tooltip>
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title={showGrid ? "Hide Grid" : "Show Grid"}>
+            <IconButton 
+              onClick={() => setShowGrid(!showGrid)}
+              color={showGrid ? 'primary' : 'default'}
+              sx={{
+                backgroundColor: showGrid ? (theme) => 
+                  theme.palette.mode === 'dark' ? 'rgba(144, 202, 249, 0.16)' : 'rgba(33, 150, 243, 0.08)' : 'transparent'
+              }}
+            >
+              {showGrid ? <GridOffIcon /> : <GridIcon />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        {/* Drawing Settings */}
+        <Box display="flex" alignItems="center" gap={2} sx={{ flex: 1, mx: 2 }}>
+          <Box sx={{ minWidth: 120 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Size
+            </Typography>
             <Slider
               value={strokeWidth}
               onChange={(_, value) => setStrokeWidth(value)}
               min={1}
               max={20}
               disabled={readOnly}
+              size="small"
+              sx={{ 
+                color: theme.palette.primary.main,
+                '& .MuiSlider-thumb': {
+                  width: 16,
+                  height: 16,
+                }
+              }}
             />
           </Box>
-
+          <Divider orientation="vertical" flexItem />
           <Box>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Color
+            </Typography>
             <input
               type="color"
               value={color}
@@ -169,79 +268,99 @@ const DrawingCanvas = ({ onSave, readOnly = false }) => {
               disabled={readOnly}
               style={{ 
                 width: '40px', 
-                height: '40px',
+                height: '30px',
                 padding: 0,
-                border: 'none'
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
               }}
             />
           </Box>
+        </Box>
 
-          <ButtonGroup>
-            <Tooltip title="Undo">
-              <span>
-                <IconButton 
-                  onClick={handleUndo}
-                  disabled={readOnly || lines.length === 0}
-                >
-                  <Undo />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Tooltip title="Clear">
-              <span>
-                <IconButton 
-                  onClick={handleClear}
-                  disabled={readOnly || lines.length === 0}
-                >
-                  <Clear />
-                </IconButton>
-              </span>
-            </Tooltip>
-            {onSave && (
-              <Tooltip title="Save">
-                <span>
-                  <IconButton 
-                    onClick={handleSave}
-                    disabled={readOnly || lines.length === 0}
-                    color="primary"
-                  >
-                    <Save />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            )}
-          </ButtonGroup>
+        {/* Action Buttons */}
+        <Box display="flex" gap={1}>
+          <Tooltip title="Undo">
+            <span>
+              <IconButton 
+                onClick={handleUndo}
+                disabled={historyStep === 0}
+              >
+                <UndoIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Redo">
+            <span>
+              <IconButton 
+                onClick={handleRedo}
+                disabled={historyStep === history.length - 1}
+              >
+                <RedoIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Divider orientation="vertical" flexItem />
+          <Tooltip title="Clear Canvas">
+            <IconButton 
+              onClick={handleClear}
+              color="error"
+            >
+              <ClearIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Save Drawing">
+            <IconButton 
+              onClick={handleSave}
+              disabled={readOnly || lines.length === 0}
+              color="primary"
+              sx={{
+                '&.Mui-disabled': {
+                  backgroundColor: 'transparent'
+                }
+              }}
+            >
+              <SaveIcon />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Paper>
 
       <Stage
-        width={stageSize.width}
-        height={stageSize.height}
+        width={width}
+        height={height}
         onMouseDown={handleMouseDown}
-        onMousemove={handleMouseMove}
-        onMouseup={handleMouseUp}
-        onMouseleave={handleMouseUp}
-        onTouchStart={handleMouseDown}
-        onTouchMove={handleMouseMove}
-        onTouchEnd={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
         ref={stageRef}
-        style={{ 
-          backgroundColor: '#fff',
+        style={{
+          border: '1px solid #ccc',
           borderRadius: '4px',
-          border: '1px solid #ccc'
+          background: '#fff'
         }}
       >
         <Layer>
+          {/* Grid Layer */}
+          {gridLines.map((line, i) => (
+            <Line
+              key={`grid-${i}`}
+              points={line.points}
+              stroke={line.stroke}
+              strokeWidth={line.strokeWidth}
+            />
+          ))}
+
+          {/* Drawing Layer */}
           {lines.map((line, i) => (
             <Line
-              key={i}
+              key={`drawing-${i}`}
               points={line.points}
               stroke={line.color}
               strokeWidth={line.isDot ? line.strokeWidth * 2 : line.strokeWidth}
               lineCap="round"
               lineJoin="round"
               tension={0.5}
-              // For dots, use a circle shape
               {...(line.isDot && {
                 tension: 0,
                 closed: true,
