@@ -43,6 +43,7 @@ import {
   deleteDoc,
   doc,
   updateDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -116,13 +117,16 @@ const Classes = () => {
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('role', '==', 'student'));
       const querySnapshot = await getDocs(q);
-      const fetchedStudents = [];
-      querySnapshot.forEach((doc) => {
-        fetchedStudents.push({ id: doc.id, ...doc.data() });
-      });
+      const fetchedStudents = querySnapshot.docs
+        .map(doc => ({
+          id: doc.id,
+          email: doc.data().email,
+          name: doc.data().name || doc.data().email
+        }));
       setStudents(fetchedStudents);
     } catch (error) {
       console.error('Error fetching students:', error);
+      setError('Failed to load students. Please try refreshing the page.');
     }
   };
 
@@ -156,29 +160,113 @@ const Classes = () => {
 
   const handleSubmit = async () => {
     try {
+      console.log('Starting class submission...', { formData, currentUser });
+      
       if (!formData.name) {
         setError('Class name is required');
         return;
       }
 
-      const classData = {
-        ...formData,
-        teacherId: currentUser.uid,
-        updatedAt: new Date().toISOString(),
-      };
+      // Validate that all studentIds exist and are actually students
+      const studentIds = Array.isArray(formData.studentIds) ? formData.studentIds : [];
+      const validStudents = students.filter(s => studentIds.includes(s.id));
+      
+      console.log('Student validation:', {
+        providedIds: studentIds,
+        validStudents: validStudents.map(s => ({ id: s.id, name: s.name })),
+        allStudents: students.map(s => ({ id: s.id, name: s.name }))
+      });
+      
+      if (studentIds.length !== validStudents.length) {
+        setError('Some selected users are not valid students');
+        return;
+      }
+
+      // Validate course if selected
+      if (formData.courseId) {
+        const courseExists = courses.some(c => c.id === formData.courseId);
+        console.log('Course validation:', { courseId: formData.courseId, exists: courseExists });
+        if (!courseExists) {
+          setError('Selected course is not valid');
+          return;
+        }
+      }
 
       if (selectedClass) {
-        await updateDoc(doc(db, 'classes', selectedClass.id), classData);
+        console.log('Updating existing class:', selectedClass.id);
+        // For updates, we need to get the existing class data first
+        const classRef = doc(db, 'classes', selectedClass.id);
+        const classDoc = await getDoc(classRef);
+        
+        console.log('Fetched class document:', {
+          exists: classDoc.exists(),
+          data: classDoc.exists() ? classDoc.data() : null
+        });
+        
+        if (!classDoc.exists()) {
+          setError('Class not found');
+          return;
+        }
+
+        const existingData = classDoc.data();
+        
+        console.log('Permission check:', {
+          teacherId: existingData.teacherId,
+          currentUserId: currentUser.uid,
+          userRole: currentUser.role,
+          hasPermission: existingData.teacherId === currentUser.uid || currentUser.role === 'admin'
+        });
+        
+        // Verify ownership
+        if (existingData.teacherId !== currentUser.uid && currentUser.role !== 'admin') {
+          setError('You do not have permission to update this class');
+          return;
+        }
+
+        // Merge existing data with updates
+        const updatedData = {
+          ...existingData,
+          name: formData.name.trim(),
+          description: (formData.description || '').trim(),
+          courseId: formData.courseId || null,
+          studentIds: validStudents.map(s => s.id),
+          updatedAt: new Date().toISOString()
+        };
+
+        console.log('Updating with data:', updatedData);
+
+        // Update the document
+        await updateDoc(classRef, updatedData);
+        console.log('Update successful');
+
       } else {
-        classData.createdAt = new Date().toISOString();
+        console.log('Creating new class');
+        // For new classes
+        const classData = {
+          name: formData.name.trim(),
+          teacherId: currentUser.uid,
+          description: (formData.description || '').trim(),
+          courseId: formData.courseId || null,
+          studentIds: validStudents.map(s => s.id),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        console.log('Creating with data:', classData);
         await addDoc(collection(db, 'classes'), classData);
+        console.log('Creation successful');
       }
 
       handleCloseDialog();
       fetchClasses();
     } catch (error) {
-      console.error('Error saving class:', error);
-      setError('Failed to save class');
+      console.error('Error saving class:', {
+        error,
+        errorCode: error.code,
+        errorMessage: error.message,
+        errorDetails: error.details
+      });
+      setError('Failed to save class: ' + error.message);
     }
   };
 
@@ -335,23 +423,26 @@ const Classes = () => {
               options={courses}
               getOptionLabel={(option) => option.title}
               value={courses.find(c => c.id === formData.courseId) || null}
-              onChange={(_, newValue) => setFormData({ ...formData, courseId: newValue?.id })}
+              onChange={(_, newValue) => setFormData({ ...formData, courseId: newValue?.id || null })}
               renderInput={(params) => (
                 <TextField {...params} label="Select Course" />
               )}
-              renderOption={(props, option) => (
-                <li {...props}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <BookIcon sx={{ mr: 1 }} />
-                    <Box>
-                      <Typography variant="body1">{option.title}</Typography>
-                      <Typography variant="caption" color="textSecondary">
-                        {option.description}
-                      </Typography>
+              renderOption={(props, option) => {
+                const { key, ...otherProps } = props;
+                return (
+                  <li key={option.id} {...otherProps}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <BookIcon sx={{ mr: 1 }} />
+                      <Box>
+                        <Typography variant="body1">{option.title}</Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {option.description}
+                        </Typography>
+                      </Box>
                     </Box>
-                  </Box>
-                </li>
-              )}
+                  </li>
+                );
+              }}
             />
           </TabPanel>
 
@@ -368,24 +459,31 @@ const Classes = () => {
               renderInput={(params) => (
                 <TextField {...params} label="Select Students" />
               )}
-              renderOption={(props, option) => (
-                <li {...props}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Avatar sx={{ mr: 1 }}>
-                      {option.email[0].toUpperCase()}
-                    </Avatar>
-                    <Typography>{option.email}</Typography>
-                  </Box>
-                </li>
-              )}
-              renderTags={(value, getTagProps) =>
-                value.map((option, index) => (
-                  <Chip
-                    avatar={<Avatar>{option.email[0].toUpperCase()}</Avatar>}
-                    label={option.email}
-                    {...getTagProps({ index })}
-                  />
-                ))
+              renderOption={(props, option) => {
+                const { key, ...otherProps } = props;
+                return (
+                  <li key={option.id} {...otherProps}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Avatar sx={{ mr: 1 }}>
+                        {option.email[0].toUpperCase()}
+                      </Avatar>
+                      <Typography>{option.email}</Typography>
+                    </Box>
+                  </li>
+                );
+              }}
+              renderTags={(tagValue, getTagProps) =>
+                tagValue.map((option, index) => {
+                  const { key, ...tagProps } = getTagProps({ index });
+                  return (
+                    <Chip
+                      key={option.id}
+                      {...tagProps}
+                      avatar={<Avatar>{option.email[0].toUpperCase()}</Avatar>}
+                      label={option.email}
+                    />
+                  );
+                })
               }
             />
           </TabPanel>

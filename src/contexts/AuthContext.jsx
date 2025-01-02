@@ -27,9 +27,17 @@ export function AuthProvider({ children }) {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          setCurrentUser({ ...user, ...userData });
+          setCurrentUser({ 
+            ...user, 
+            ...userData,
+            role: userData.role || 'student' // Ensure role is always set
+          });
         } else {
-          setCurrentUser(user);
+          // Set default role if no user document exists
+          setCurrentUser({
+            ...user,
+            role: 'student'
+          });
         }
       } else {
         setCurrentUser(null);

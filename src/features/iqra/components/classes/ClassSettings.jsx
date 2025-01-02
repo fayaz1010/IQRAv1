@@ -123,14 +123,34 @@ const ClassSettings = ({ open, onClose, classData, onUpdate }) => {
 
   const handleAddStudent = async (studentId) => {
     try {
+      console.log('Adding student:', {
+        studentId,
+        classId: classData.id,
+        currentStudentIds: classData.studentIds || []
+      });
+      
       setError('');
       const classRef = doc(db, 'classes', classData.id);
-      await updateDoc(classRef, {
+      
+      // Only update the studentIds array
+      const updateData = {
         studentIds: arrayUnion(studentId),
-      });
+        updatedAt: new Date().toISOString()
+      };
+      
+      console.log('Update data:', updateData);
+      
+      await updateDoc(classRef, updateData);
+      console.log('Student added successfully');
+      
       onUpdate();
     } catch (error) {
-      console.error('Error adding student:', error);
+      console.error('Error adding student:', {
+        error,
+        code: error.code,
+        message: error.message,
+        details: error.details
+      });
       setError('Failed to add student');
     }
   };

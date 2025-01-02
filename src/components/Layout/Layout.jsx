@@ -15,6 +15,7 @@ import {
   useTheme,
   useMediaQuery,
   Tooltip,
+  Collapse,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -27,6 +28,11 @@ import {
   CalendarMonth as CalendarIcon,
   Settings as SettingsIcon,
   AdminPanelSettings as AdminIcon,
+  LibraryBooks as LibraryBooksIcon,
+  MenuBook as MenuBookIcon,
+  Assignment as AssignmentIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -34,7 +40,7 @@ import DashboardHeader from '../dashboard/DashboardHeader';
 
 const drawerWidth = 280;
 
-// Simplified menu structure
+// Enhanced menu structure with sub-items and categories
 const menuItems = {
   student: [
     { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
@@ -43,56 +49,145 @@ const menuItems = {
     { title: 'Profile', icon: <PersonIcon />, path: '/profile' },
   ],
   teacher: [
-    { title: 'Dashboard', icon: <DashboardIcon />, path: '/teacher' },
-    { title: 'Schedule', icon: <CalendarIcon />, path: '/schedule' },
-    { title: 'Classes', icon: <ClassIcon />, path: '/classes' },
-    { title: 'Teaching', icon: <SchoolIcon />, path: '/classes/iqra' },
-    { title: 'Profile', icon: <PersonIcon />, path: '/profile' },
+    { 
+      title: 'Dashboard', 
+      icon: <DashboardIcon />, 
+      path: '/teacher' 
+    },
+    {
+      title: 'Teaching',
+      icon: <SchoolIcon />,
+      children: [
+        { 
+          title: 'Active Sessions', 
+          icon: <MenuBookIcon />, 
+          path: '/classes/iqra' 
+        },
+        { 
+          title: 'Courses', 
+          icon: <LibraryBooksIcon />, 
+          path: '/courses' 
+        },
+        { 
+          title: 'Materials', 
+          icon: <AssignmentIcon />, 
+          path: '/materials' 
+        },
+      ]
+    },
+    {
+      title: 'Management',
+      icon: <ClassIcon />,
+      children: [
+        { 
+          title: 'Classes', 
+          icon: <ClassIcon />, 
+          path: '/classes' 
+        },
+        { 
+          title: 'Schedule', 
+          icon: <CalendarIcon />, 
+          path: '/schedule' 
+        },
+      ]
+    },
+    { 
+      title: 'Profile', 
+      icon: <PersonIcon />, 
+      path: '/profile' 
+    },
   ],
   admin: [
-    { title: 'Dashboard', icon: <AdminIcon />, path: '/admin' },
-    { title: 'Users', icon: <PersonIcon />, path: '/admin/users' },
+    { title: 'Dashboard', icon: <DashboardIcon />, path: '/admin' },
     { title: 'Settings', icon: <SettingsIcon />, path: '/admin/settings' },
+    { title: 'Users', icon: <AdminIcon />, path: '/admin/users' },
   ],
 };
 
 const Layout = ({ children }) => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [open, setOpen] = useState(!isMobile);
+  const [expandedMenus, setExpandedMenus] = useState({});
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const [open, setOpen] = useState(true);
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const userRole = currentUser?.role || 'student';
 
-  // Close drawer on mobile by default
   useEffect(() => {
-    if (isMobile) {
-      setOpen(false);
-    }
+    setOpen(!isMobile);
   }, [isMobile]);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
   };
 
-  const handleNavigation = (path) => {
+  const handleMenuClick = (path) => {
     navigate(path);
     if (isMobile) {
       setOpen(false);
     }
   };
 
-  // Get current role's menu items
-  const currentMenuItems = menuItems[currentUser?.role || 'student'] || [];
+  const handleExpandClick = (title) => {
+    setExpandedMenus(prev => ({
+      ...prev,
+      [title]: !prev[title]
+    }));
+  };
+
+  const renderMenuItem = (item) => {
+    if (item.children) {
+      return (
+        <div key={item.title}>
+          <ListItemButton onClick={() => handleExpandClick(item.title)}>
+            <ListItemIcon>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.title} />
+            {expandedMenus[item.title] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          </ListItemButton>
+          <Collapse in={expandedMenus[item.title]} timeout="auto" unmountOnExit>
+            <List component="div" disablePadding>
+              {item.children.map((child) => (
+                <ListItemButton
+                  key={child.title}
+                  sx={{ pl: 4 }}
+                  selected={location.pathname === child.path}
+                  onClick={() => handleMenuClick(child.path)}
+                >
+                  <ListItemIcon>{child.icon}</ListItemIcon>
+                  <ListItemText primary={child.title} />
+                </ListItemButton>
+              ))}
+            </List>
+          </Collapse>
+        </div>
+      );
+    }
+
+    return (
+      <ListItemButton
+        key={item.title}
+        selected={location.pathname === item.path}
+        onClick={() => handleMenuClick(item.path)}
+      >
+        <ListItemIcon>{item.icon}</ListItemIcon>
+        <ListItemText primary={item.title} />
+      </ListItemButton>
+    );
+  };
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar
         position="fixed"
+        elevation={0}
         sx={{
-          width: { md: `calc(100% - ${open ? drawerWidth : 0}px)` },
-          ml: { md: `${open ? drawerWidth : 0}px` },
-          transition: theme.transitions.create(['width', 'margin'], {
+          backgroundColor: theme.palette.background.paper,
+          color: theme.palette.text.primary,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: { sm: `${drawerWidth}px` },
+          transition: theme.transitions.create(['margin', 'width'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
@@ -101,9 +196,10 @@ const Layout = ({ children }) => {
         <Toolbar>
           <IconButton
             color="inherit"
+            aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { md: 'none' } }}
+            sx={{ mr: 2, display: { sm: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -115,41 +211,43 @@ const Layout = ({ children }) => {
         variant={isMobile ? 'temporary' : 'permanent'}
         open={open}
         onClose={handleDrawerToggle}
+        ModalProps={{
+          keepMounted: true,
+        }}
         sx={{
-          width: drawerWidth,
-          flexShrink: 0,
+          display: { xs: 'block', sm: 'block' },
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
             boxSizing: 'border-box',
+            width: drawerWidth,
+            backgroundColor: theme.palette.background.default,
+            borderRight: `1px solid ${theme.palette.divider}`,
           },
         }}
       >
-        <Toolbar
-          sx={{
-            display: 'flex',
+        <Toolbar 
+          sx={{ 
+            display: 'flex', 
+            justifyContent: 'center',
             alignItems: 'center',
-            justifyContent: 'flex-end',
-            px: [1],
+            py: 1
           }}
         >
-          <IconButton onClick={handleDrawerToggle}>
-            <ChevronLeftIcon />
-          </IconButton>
+          <Box
+            component="img"
+            src="/assets/logo.png"
+            alt="Iqra App Logo"
+            sx={{
+              height: 64,
+              width: 'auto',
+              mb: 2
+            }}
+          />
         </Toolbar>
-        <Divider />
-        <List>
-          {currentMenuItems.map((item) => (
-            <ListItem key={item.path} disablePadding>
-              <ListItemButton
-                selected={location.pathname === item.path}
-                onClick={() => handleNavigation(item.path)}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.title} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-        </List>
+        <Box sx={{ overflow: 'auto' }}>
+          <List>
+            {menuItems[userRole] && menuItems[userRole].map((item) => renderMenuItem(item))}
+          </List>
+        </Box>
       </Drawer>
 
       <Box
@@ -157,8 +255,13 @@ const Layout = ({ children }) => {
         sx={{
           flexGrow: 1,
           p: 3,
-          width: { md: `calc(100% - ${drawerWidth}px)` },
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: { sm: `${drawerWidth}px` },
           mt: '64px',
+          transition: theme.transitions.create(['margin', 'width'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         {children}

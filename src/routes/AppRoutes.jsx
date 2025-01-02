@@ -20,6 +20,8 @@ const TeachingSession = React.lazy(() => import('../features/iqra/components/tea
 const IqraBookViewer = React.lazy(() => import('../features/iqra/components/IqraBookViewer'));
 const IqraTeaching = React.lazy(() => import('../features/iqra/components/IqraTeaching'));
 const Classes = React.lazy(() => import('../pages/Classes'));
+const Courses = React.lazy(() => import('../pages/Courses'));
+const Materials = React.lazy(() => import('../pages/Materials'));
 
 // Loading screen
 const LoadingScreen = () => (
@@ -124,7 +126,26 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
+      <Route
+        path="/courses"
+        element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <Courses />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/materials"
+        element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <Materials />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/schedule"
         element={
@@ -135,7 +156,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/classes"
         element={
@@ -146,7 +166,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/classes/iqra"
         element={
@@ -157,7 +176,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/teach/:classId"
         element={
@@ -182,7 +200,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/admin/users"
         element={
@@ -193,7 +210,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/admin/settings"
         element={
@@ -216,7 +232,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/learn"
         element={
@@ -227,7 +242,6 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-
       <Route
         path="/learn/iqra/:bookId"
         element={
