@@ -10,6 +10,7 @@ import {
   Paper,
   CircularProgress,
   ButtonGroup,
+  Button,
 } from '@mui/material';
 import {
   ZoomIn,
@@ -20,8 +21,10 @@ import {
   Delete as Clear,
   NavigateBefore,
   NavigateNext,
+  Save,
 } from '@mui/icons-material';
 import { IqraBookService } from '../services/iqraBookService';
+import { useSession } from '../contexts/SessionContext';
 
 const DrawingTool = {
   POINTER: 'pointer',
@@ -29,7 +32,14 @@ const DrawingTool = {
   HIGHLIGHTER: 'highlighter',
 };
 
-const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = false }) => {
+const IqraBookViewer = ({ 
+  bookId, 
+  initialPage = 1, 
+  onPageChange,
+  readOnly = false,
+  studentId = null, 
+  showSaveButton = false 
+}) => {
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [zoom, setZoom] = useState(100);
   const [pageUrl, setPageUrl] = useState(null);
@@ -43,6 +53,7 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
   const containerRef = useRef(null);
   const stageRef = useRef(null);
 
+  const { activeSession, saveDrawing, updateStudentProgress } = useSession();
   const [pageImage] = useImage(pageUrl);
 
   useEffect(() => {
@@ -66,15 +77,13 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
     const updateDimensions = () => {
       if (containerRef.current && pageImage) {
         const container = containerRef.current;
-        const containerWidth = container.offsetWidth - 40; // Account for padding
+        const containerWidth = container.offsetWidth - 40;
         const containerHeight = container.offsetHeight - 40;
         
-        // Calculate dimensions maintaining aspect ratio
         const imageRatio = pageImage.height / pageImage.width;
         let width = containerWidth;
         let height = width * imageRatio;
 
-        // If height exceeds container, scale down
         if (height > containerHeight) {
           height = containerHeight;
           width = height / imageRatio;
@@ -95,12 +104,41 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
     return () => window.removeEventListener('resize', updateDimensions);
   }, [pageImage, zoom]);
 
+  useEffect(() => {
+    const loadDrawings = async () => {
+      if (activeSession && studentId) {
+        try {
+          const sessionRef = doc(db, 'classes', activeSession.classId, 'sessions', activeSession.id);
+          const sessionDoc = await getDoc(sessionRef);
+          
+          if (sessionDoc.exists()) {
+            const sessionData = sessionDoc.data();
+            const studentDrawings = sessionData.studentProgress[studentId]?.drawings[currentPage];
+            
+            if (studentDrawings) {
+              setLines(studentDrawings);
+            } else {
+              setLines([]);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading drawings:', error);
+        }
+      }
+    };
+
+    loadDrawings();
+  }, [currentPage, activeSession, studentId]);
+
   const loadPage = async (pageNumber) => {
     try {
       const url = await IqraBookService.getPageUrl(bookId, pageNumber);
       setPageUrl(url);
       if (onPageChange) {
         onPageChange(pageNumber);
+      }
+      if (activeSession && studentId) {
+        await updateStudentProgress(studentId, pageNumber);
       }
     } catch (error) {
       console.error(error);
@@ -143,6 +181,16 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
 
   const handleZoom = (newZoom) => {
     setZoom(Math.max(50, Math.min(200, newZoom)));
+  };
+
+  const handleSaveDrawings = async () => {
+    if (!activeSession || !studentId) return;
+    
+    try {
+      await saveDrawing(studentId, currentPage, lines);
+    } catch (error) {
+      console.error('Error saving drawings:', error);
+    }
   };
 
   if (loading) {
@@ -207,34 +255,47 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
 
           {/* Drawing Tools */}
           {!readOnly && (
-            <ButtonGroup>
-              <Tooltip title="Brush">
-                <IconButton
-                  onClick={() => setCurrentTool(DrawingTool.BRUSH)}
-                  color={currentTool === DrawingTool.BRUSH ? 'primary' : 'default'}
+            <Stack direction="row" spacing={1}>
+              <ButtonGroup>
+                <Tooltip title="Brush">
+                  <IconButton
+                    onClick={() => setCurrentTool(DrawingTool.BRUSH)}
+                    color={currentTool === DrawingTool.BRUSH ? 'primary' : 'default'}
+                  >
+                    <Brush />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Highlighter">
+                  <IconButton
+                    onClick={() => setCurrentTool(DrawingTool.HIGHLIGHTER)}
+                    color={currentTool === DrawingTool.HIGHLIGHTER ? 'primary' : 'default'}
+                  >
+                    <Highlight />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Undo">
+                  <IconButton onClick={handleUndo} disabled={lines.length === 0}>
+                    <Undo />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Clear">
+                  <IconButton onClick={handleClear} disabled={lines.length === 0}>
+                    <Clear />
+                  </IconButton>
+                </Tooltip>
+              </ButtonGroup>
+              
+              {showSaveButton && (
+                <Button
+                  variant="contained"
+                  startIcon={<Save />}
+                  onClick={handleSaveDrawings}
+                  disabled={!activeSession || !studentId}
                 >
-                  <Brush />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Highlighter">
-                <IconButton
-                  onClick={() => setCurrentTool(DrawingTool.HIGHLIGHTER)}
-                  color={currentTool === DrawingTool.HIGHLIGHTER ? 'primary' : 'default'}
-                >
-                  <Highlight />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Undo">
-                <IconButton onClick={handleUndo} disabled={lines.length === 0}>
-                  <Undo />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Clear">
-                <IconButton onClick={handleClear} disabled={lines.length === 0}>
-                  <Clear />
-                </IconButton>
-              </Tooltip>
-            </ButtonGroup>
+                  Save
+                </Button>
+              )}
+            </Stack>
           )}
         </Stack>
 

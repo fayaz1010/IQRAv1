@@ -39,34 +39,35 @@ const getTheme = (mode, fontSize = 'medium') => {
     palette: {
       mode,
       primary: {
-        main: getColor('#1F4068', '#4A90E2'),  // Lighter blue in dark mode
-        light: getColor('#345D98', '#68A6E8'),
-        dark: getColor('#0D2137', '#2171C7'),
+        main: mode === 'dark' ? '#2196f3' : '#1F4068',
+        light: mode === 'dark' ? '#64b5f6' : '#345D98',
+        dark: mode === 'dark' ? '#1976d2' : '#0D2137',
         contrastText: '#ffffff',
       },
       secondary: {
-        main: getColor('#C99A3C', '#F7B733'),  // Brighter gold in dark mode
-        light: getColor('#E3B456', '#F9C65B'),
-        dark: getColor('#A67B1F', '#D99B1C'),
+        main: mode === 'dark' ? '#f50057' : '#C99A3C',
+        light: mode === 'dark' ? '#ff4081' : '#E3B456',
+        dark: mode === 'dark' ? '#c51162' : '#A67B1F',
         contrastText: '#ffffff',
       },
       background: {
-        default: getColor('#F5F7FA', '#121212'),
-        paper: getColor('#FFFFFF', '#1E1E1E'),
+        default: mode === 'dark' ? '#121212' : '#F5F7FA',
+        paper: mode === 'dark' ? '#1e1e1e' : '#FFFFFF',
+        darker: mode === 'dark' ? '#0a0a0a' : '#e0e0e0',
       },
       text: {
-        primary: getColor('#2D3748', '#E0E0E0'),
-        secondary: getColor('#4A5568', '#A0A0A0'),
+        primary: mode === 'dark' ? '#ffffff' : '#2D3748',
+        secondary: mode === 'dark' ? '#b0b0b0' : '#4A5568',
       },
-      divider: getColor('rgba(0, 0, 0, 0.12)', 'rgba(255, 255, 255, 0.12)'),
+      divider: mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
     },
     components: {
       MuiLink: {
         styleOverrides: {
           root: {
-            color: getColor('#1F4068', '#4A90E2'),
+            color: mode === 'dark' ? '#2196f3' : '#1F4068',
             '&:hover': {
-              color: getColor('#345D98', '#68A6E8'),
+              color: mode === 'dark' ? '#64b5f6' : '#345D98',
             },
           },
         },
@@ -75,11 +76,11 @@ const getTheme = (mode, fontSize = 'medium') => {
         styleOverrides: {
           root: {
             '& label': {
-              color: getColor('#4A5568', '#A0A0A0'),
+              color: mode === 'dark' ? '#b0b0b0' : '#4A5568',
               fontSize: `${14 * multiplier}px`,
             },
             '& label.Mui-focused': {
-              color: getColor('#1F4068', '#4A90E2'),
+              color: mode === 'dark' ? '#2196f3' : '#1F4068',
             },
             '& .MuiInputBase-input': {
               fontSize: `${16 * multiplier}px`,
@@ -105,10 +106,10 @@ const getTheme = (mode, fontSize = 'medium') => {
             },
           },
           outlined: {
-            borderColor: getColor('#1F4068', '#4A90E2'),
+            borderColor: mode === 'dark' ? '#2196f3' : '#1F4068',
             '&:hover': {
-              borderColor: getColor('#345D98', '#68A6E8'),
-              backgroundColor: getColor('rgba(31, 64, 104, 0.04)', 'rgba(74, 144, 226, 0.08)'),
+              borderColor: mode === 'dark' ? '#64b5f6' : '#345D98',
+              backgroundColor: mode === 'dark' ? 'rgba(33, 150, 243, 0.08)' : 'rgba(31, 64, 104, 0.04)',
             },
           },
         },
@@ -117,10 +118,7 @@ const getTheme = (mode, fontSize = 'medium') => {
         styleOverrides: {
           root: {
             borderRadius: 12,
-            boxShadow: getColor(
-              '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-              '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.18)'
-            ),
+            boxShadow: mode === 'dark' ? '0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.18)' : '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
           },
         },
       },
@@ -128,13 +126,14 @@ const getTheme = (mode, fontSize = 'medium') => {
         styleOverrides: {
           root: {
             borderRadius: 12,
+            backgroundColor: mode === 'dark' ? '#1e1e1e' : '#FFFFFF',
           },
         },
       },
       MuiDivider: {
         styleOverrides: {
           root: {
-            borderColor: getColor('rgba(0, 0, 0, 0.12)', 'rgba(255, 255, 255, 0.12)'),
+            borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
           },
         },
       },

@@ -3,8 +3,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout/Layout';
 import { CircularProgress, Box } from '@mui/material';
+import { SessionProvider } from '../features/iqra/contexts/SessionContext';
 
-// Lazy load components - this improves initial loading performance
+// Lazy load components
 const Dashboard = React.lazy(() => import('../pages/Dashboard'));
 const Login = React.lazy(() => import('../pages/auth/Login'));
 const Register = React.lazy(() => import('../pages/auth/Register'));
@@ -15,10 +16,12 @@ const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
 const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
 const LandingPage = React.lazy(() => import('../pages/public/LandingPage'));
 const Settings = React.lazy(() => import('../pages/settings/Settings'));
+const TeachingSession = React.lazy(() => import('../features/iqra/components/teaching/TeachingSession'));
 const IqraBookViewer = React.lazy(() => import('../features/iqra/components/IqraBookViewer'));
 const IqraTeaching = React.lazy(() => import('../features/iqra/components/IqraTeaching'));
+const Classes = React.lazy(() => import('../pages/Classes'));
 
-// Loading screen shown while components are loading
+// Loading screen
 const LoadingScreen = () => (
   <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
     <CircularProgress />
@@ -26,15 +29,12 @@ const LoadingScreen = () => (
 );
 
 const AppRoutes = () => {
-  // Get authentication state and user role from AuthContext
   const { currentUser, loading } = useAuth();
 
-  // Show loading screen while checking authentication
   if (loading) {
     return <LoadingScreen />;
   }
 
-  // Get the appropriate dashboard route based on user role
   const getDashboardRoute = () => {
     if (!currentUser) return '/';
     
@@ -49,177 +49,198 @@ const AppRoutes = () => {
   };
 
   // Protected route wrapper
-  // This component:
-  // 1. Checks if user is authenticated
-  // 2. Verifies user has permission for the route
-  // 3. Wraps the content in the Layout component
-  const ProtectedRoute = ({ children, allowedRoles = ['student', 'teacher', 'admin'] }) => {
-    // Redirect to landing page if not logged in
+  const ProtectedRoute = ({ children, allowedRoles = [] }) => {
     if (!currentUser) {
-      return <Navigate to="/" replace />;
+      return <Navigate to="/login" />;
     }
 
-    // Redirect to appropriate dashboard if user doesn't have permission
-    if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-      return <Navigate to={getDashboardRoute()} replace />;
+    if (allowedRoles.length > 0 && !allowedRoles.includes(currentUser.role)) {
+      return <Navigate to={getDashboardRoute()} />;
     }
 
-    // Wrap the content in the Layout component
     return <Layout>{children}</Layout>;
   };
 
   return (
     <Routes>
-      {/* Public Routes */}
-      {/* Landing Page - shows landing page if not logged in, redirects to dashboard if logged in */}
+      {/* Public routes */}
       <Route
         path="/"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            {currentUser ? (
-              <Navigate to={getDashboardRoute()} replace />
-            ) : (
+          currentUser ? (
+            <Navigate to={getDashboardRoute()} />
+          ) : (
+            <Suspense fallback={<LoadingScreen />}>
               <LandingPage />
-            )}
-          </Suspense>
+            </Suspense>
+          )
         }
       />
-
-      {/* Login Page - shows login if not logged in, redirects to dashboard if logged in */}
       <Route
         path="/login"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            {currentUser ? (
-              <Navigate to={getDashboardRoute()} replace />
-            ) : (
+          currentUser ? (
+            <Navigate to={getDashboardRoute()} />
+          ) : (
+            <Suspense fallback={<LoadingScreen />}>
               <Login />
-            )}
-          </Suspense>
+            </Suspense>
+          )
         }
       />
-
-      {/* Register Page - shows register if not logged in, redirects to dashboard if logged in */}
       <Route
         path="/register"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            {currentUser ? (
-              <Navigate to={getDashboardRoute()} replace />
-            ) : (
+          currentUser ? (
+            <Navigate to={getDashboardRoute()} />
+          ) : (
+            <Suspense fallback={<LoadingScreen />}>
               <Register />
-            )}
-          </Suspense>
+            </Suspense>
+          )
         }
       />
 
-      {/* Student Routes */}
+      {/* Student routes */}
       <Route
         path="/dashboard"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['student']}>
+          <ProtectedRoute allowedRoles={['student']}>
+            <Suspense fallback={<LoadingScreen />}>
               <Dashboard />
-            </ProtectedRoute>
-          </Suspense>
+            </Suspense>
+          </ProtectedRoute>
         }
       />
 
-      <Route
-        path="/learn"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['student']}>
-              <Learn />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Teacher Routes */}
+      {/* Teacher routes */}
       <Route
         path="/teacher"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['teacher']}>
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
               <TeacherDashboard />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Teacher Iqra Routes */}
-      <Route
-        path="/classes/iqra"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['teacher']}>
-              <IqraTeaching />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Admin Routes */}
-      <Route
-        path="/admin"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Iqra Routes */}
-      <Route
-        path="/learn/iqra/:bookId"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['student', 'teacher']}>
-              <IqraBookViewer />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Common Protected Routes - accessible by all authenticated users */}
-      <Route
-        path="/profile"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          </Suspense>
+            </Suspense>
+          </ProtectedRoute>
         }
       />
 
       <Route
         path="/schedule"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
               <Schedule />
-            </ProtectedRoute>
-          </Suspense>
+            </Suspense>
+          </ProtectedRoute>
         }
       />
 
       <Route
-        path="/settings"
+        path="/classes"
         element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute>
-              <Settings />
-            </ProtectedRoute>
-          </Suspense>
+          <ProtectedRoute allowedRoles={['teacher', 'student']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <Classes />
+            </Suspense>
+          </ProtectedRoute>
         }
       />
 
-      {/* Catch all route - redirects to landing page */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="/classes/iqra"
+        element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <IqraTeaching />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/teach/:classId"
+        element={
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <SessionProvider>
+                <TeachingSession />
+              </SessionProvider>
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin routes */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <AdminDashboard />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <AdminDashboard />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/settings"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <Settings />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Common routes */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Suspense fallback={<LoadingScreen />}>
+              <Profile />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/learn"
+        element={
+          <ProtectedRoute allowedRoles={['student']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <Learn />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/learn/iqra/:bookId"
+        element={
+          <ProtectedRoute allowedRoles={['student', 'teacher']}>
+            <Suspense fallback={<LoadingScreen />}>
+              <IqraBookViewer />
+            </Suspense>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Catch all route */}
+      <Route path="*" element={<Navigate to={getDashboardRoute()} replace />} />
     </Routes>
   );
 };

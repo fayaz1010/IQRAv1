@@ -17,7 +17,7 @@ service firebase.storage {
         request.auth.token.role == 'teacher';
     }
 
-    // Iqra books storage
+    // Iqra books storage - allow read for all authenticated users
     match /iqra-books/{bookId}/{allPaths=**} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
