@@ -97,8 +97,16 @@ const EndSessionDialog = ({
               memorization: 0
             },
             areasOfImprovement: [],
-            strengths: []
+            strengths: [],
+            pageNotes: {} 
           };
+          
+          // Initialize page notes for each page covered
+          if (startPage && endPage) {
+            for (let page = startPage; page <= endPage; page++) {
+              initialStudentFeedback[student.id].pageNotes[page] = '';
+            }
+          }
         }
       });
 
@@ -112,7 +120,7 @@ const EndSessionDialog = ({
         }));
       }
     }
-  }, [students]);
+  }, [students, startPage, endPage]);
 
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
@@ -167,6 +175,22 @@ const EndSessionDialog = ({
     }));
   };
 
+  const handlePageNoteChange = (studentId, page, value) => {
+    setFeedback(prev => ({
+      ...prev,
+      studentFeedback: {
+        ...prev.studentFeedback,
+        [studentId]: {
+          ...prev.studentFeedback[studentId],
+          pageNotes: {
+            ...prev.studentFeedback[studentId].pageNotes,
+            [page]: value
+          }
+        }
+      }
+    }));
+  };
+
   const handleSave = () => {
     onSave({
       ...feedback,
@@ -179,6 +203,12 @@ const EndSessionDialog = ({
 
   const renderStudentFeedback = (student) => {
     const studentFeedback = feedback.studentFeedback[student.id] || {};
+    const pages = [];
+    if (startPage && endPage) {
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
+    }
     
     return (
       <Box sx={{ mt: 2 }}>
@@ -196,10 +226,38 @@ const EndSessionDialog = ({
 
             <Divider />
 
+            {/* Page-specific Feedback */}
+            <Box>
+              <Typography variant="subtitle1" gutterBottom>
+                Page-by-Page Feedback
+              </Typography>
+              <Stack spacing={2}>
+                {pages.map(page => (
+                  <Box key={page}>
+                    <Typography variant="subtitle2" color="primary" gutterBottom>
+                      Page {page}
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={2}
+                      placeholder={`Enter feedback for page ${page}...`}
+                      value={studentFeedback.pageNotes?.[page] || ''}
+                      onChange={(e) => handlePageNoteChange(student.id, page, e.target.value)}
+                      disabled={loading}
+                      size="small"
+                    />
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+
+            <Divider />
+
             {/* Assessment Ratings */}
             <Box>
               <Typography variant="subtitle1" gutterBottom>
-                Performance Assessment
+                Overall Assessment
               </Typography>
               <Stack spacing={2}>
                 <Box>
@@ -301,7 +359,7 @@ const EndSessionDialog = ({
               </FormControl>
             </Box>
 
-            {/* Individual Notes */}
+            {/* Additional Notes */}
             <Box>
               <Typography variant="subtitle1" gutterBottom>
                 Additional Notes
@@ -312,7 +370,7 @@ const EndSessionDialog = ({
                 rows={4}
                 value={studentFeedback.notes || ''}
                 onChange={(e) => handleStudentFeedbackChange(student.id, 'notes', e.target.value)}
-                placeholder="Add specific notes about the student's performance..."
+                placeholder="Add overall notes about the student's performance..."
                 disabled={loading}
               />
             </Box>
@@ -369,6 +427,7 @@ const EndSessionDialog = ({
                 icon={<PersonIcon />}
                 label={student.name}
                 id={`session-feedback-tab-${index + 1}`}
+                wrapped
               />
             ))}
           </Tabs>
