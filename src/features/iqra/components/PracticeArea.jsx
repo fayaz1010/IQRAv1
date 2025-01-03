@@ -7,6 +7,7 @@ import {
   Tabs,
   Tab,
   Alert,
+  Avatar,
 } from '@mui/material';
 import DrawingCanvas from './DrawingCanvas';
 
@@ -88,20 +89,20 @@ const PracticeArea = ({
                 key={student.id}
                 label={
                   <Box display="flex" alignItems="center" gap={1}>
+                    <Avatar
+                      src={student.photoURL}
+                      alt={student.displayName}
+                      sx={{ 
+                        width: 24, 
+                        height: 24,
+                        border: isOnline ? '2px solid #4caf50' : 'none'
+                      }}
+                    >
+                      {student.displayName?.charAt(0)}
+                    </Avatar>
                     <Typography>
-                      {student.name}
+                      {student.displayName}
                     </Typography>
-                    {isOnline && (
-                      <Box
-                        component="span"
-                        sx={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          bgcolor: 'success.main'
-                        }}
-                      />
-                    )}
                   </Box>
                 }
                 disabled={!isTeacher && student.id !== currentUser?.uid}

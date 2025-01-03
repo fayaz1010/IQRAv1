@@ -6,15 +6,20 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+debug.log
 
 # Dependencies
 /node_modules
+/.pnp
+.pnp.js
+package-lock.json
 /dist-ssr
 *.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
 .DS_Store
 *.suo
@@ -22,6 +27,8 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+*.sublime-workspace
+*.sublime-project
 
 # Environment files
 .env
@@ -30,6 +37,9 @@ lerna-debug.log*
 .env.development
 .env.test
 .env.production
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Firebase
 .firebase/
@@ -39,7 +49,64 @@ ui-debug.log
 .firebaserc
 firebase-export-*
 service-account-key.json
+*-service-account.json
+*-service-account-key.json
 
 # Build files
 /build
 /coverage/
+
+# System files
+*.msi
+*.exe
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+node-v*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# IDE specific files
+.settings/
+.project
+.classpath
+.c9/
+*.launch
+.history/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*

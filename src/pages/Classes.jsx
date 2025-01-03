@@ -24,6 +24,7 @@ import {
   Autocomplete,
   Chip,
   Avatar,
+  ListItemAvatar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -121,7 +122,11 @@ const Classes = () => {
         .map(doc => ({
           id: doc.id,
           email: doc.data().email,
-          name: doc.data().name || doc.data().email
+          displayName: doc.data().displayName || doc.data().email,
+          photoURL: doc.data().photoURL,
+          phoneNumber: doc.data().phoneNumber,
+          address: doc.data().address,
+          bio: doc.data().bio
         }));
       setStudents(fetchedStudents);
     } catch (error) {
@@ -285,14 +290,103 @@ const Classes = () => {
     return course ? course.title : 'No course assigned';
   };
 
-  const getStudentNames = (studentIds) => {
-    return studentIds
-      ?.map(id => {
-        const student = students.find(s => s.id === id);
-        return student ? student.name || student.email : '';
-      })
-      .filter(Boolean)
-      .join(', ');
+  const renderStudentList = () => (
+    <List>
+      {formData.studentIds.map((studentId) => {
+        const student = students.find((s) => s.id === studentId);
+        if (!student) return null;
+        
+        return (
+          <ListItem key={studentId}>
+            <ListItemAvatar>
+              <Avatar src={student.photoURL} alt={student.displayName}>
+                {student.displayName?.charAt(0)}
+              </Avatar>
+            </ListItemAvatar>
+            <ListItemText
+              primary={student.displayName}
+              secondary={
+                <Typography variant="body2" color="text.secondary">
+                  {student.email}
+                </Typography>
+              }
+            />
+            <ListItemSecondaryAction>
+              <IconButton
+                edge="end"
+                aria-label="remove student"
+                onClick={() => handleRemoveStudent(studentId)}
+              >
+                <DeleteIcon />
+              </IconButton>
+            </ListItemSecondaryAction>
+          </ListItem>
+        );
+      })}
+    </List>
+  );
+
+  const renderStudentSelect = () => (
+    <Autocomplete
+      multiple
+      value={students.filter((student) => formData.studentIds.includes(student.id))}
+      options={students}
+      getOptionLabel={(option) => option.displayName}
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label="Select Students"
+          placeholder="Search students..."
+          variant="outlined"
+        />
+      )}
+      renderOption={(props, option) => (
+        <Box component="li" {...props}>
+          <Avatar
+            src={option.photoURL}
+            alt={option.displayName}
+            sx={{ width: 24, height: 24, mr: 1 }}
+          >
+            {option.displayName?.charAt(0)}
+          </Avatar>
+          <Box>
+            <Typography>{option.displayName}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {option.email}
+            </Typography>
+          </Box>
+        </Box>
+      )}
+      renderTags={(value, getTagProps) =>
+        value.map((option, index) => (
+          <Chip
+            {...getTagProps({ index })}
+            key={option.id}
+            avatar={
+              <Avatar src={option.photoURL} alt={option.displayName}>
+                {option.displayName?.charAt(0)}
+              </Avatar>
+            }
+            label={option.displayName}
+            size="small"
+          />
+        ))
+      }
+      onChange={(event, newValue) => {
+        setFormData({
+          ...formData,
+          studentIds: newValue.map((student) => student.id),
+        });
+      }}
+      sx={{ width: '100%', mb: 2 }}
+    />
+  );
+
+  const handleRemoveStudent = (studentId) => {
+    setFormData({
+      ...formData,
+      studentIds: formData.studentIds.filter((id) => id !== studentId),
+    });
   };
 
   return (
@@ -435,7 +529,7 @@ const Classes = () => {
                       <BookIcon sx={{ mr: 1 }} />
                       <Box>
                         <Typography variant="body1">{option.title}</Typography>
-                        <Typography variant="caption" color="textSecondary">
+                        <Typography variant="caption" color="text.secondary">
                           {option.description}
                         </Typography>
                       </Box>
@@ -447,45 +541,8 @@ const Classes = () => {
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            <Autocomplete
-              multiple
-              options={students}
-              getOptionLabel={(option) => option.email}
-              value={students.filter(s => formData.studentIds.includes(s.id))}
-              onChange={(_, newValue) => setFormData({
-                ...formData,
-                studentIds: newValue.map(student => student.id)
-              })}
-              renderInput={(params) => (
-                <TextField {...params} label="Select Students" />
-              )}
-              renderOption={(props, option) => {
-                const { key, ...otherProps } = props;
-                return (
-                  <li key={option.id} {...otherProps}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <Avatar sx={{ mr: 1 }}>
-                        {option.email[0].toUpperCase()}
-                      </Avatar>
-                      <Typography>{option.email}</Typography>
-                    </Box>
-                  </li>
-                );
-              }}
-              renderTags={(tagValue, getTagProps) =>
-                tagValue.map((option, index) => {
-                  const { key, ...tagProps } = getTagProps({ index });
-                  return (
-                    <Chip
-                      key={option.id}
-                      {...tagProps}
-                      avatar={<Avatar>{option.email[0].toUpperCase()}</Avatar>}
-                      label={option.email}
-                    />
-                  );
-                })
-              }
-            />
+            {renderStudentSelect()}
+            {renderStudentList()}
           </TabPanel>
         </DialogContent>
         <DialogActions>

@@ -19,7 +19,8 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondary,
+  ListItemAvatar,
+  Avatar,
   Divider,
   Rating
 } from '@mui/material';
@@ -37,7 +38,7 @@ import {
   ExpandLess
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../firebase';
 
 // Tab Panel Component
@@ -89,6 +90,36 @@ const SessionHistory = ({ classId }) => {
     }
   };
 
+  const loadSessionDetails = async (session) => {
+    try {
+      // Load attendee details
+      const attendeePromises = session.attendees.map(async (attendee) => {
+        const userDoc = await getDoc(doc(db, 'users', attendee.id));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          return {
+            ...attendee,
+            displayName: userData.displayName || 'Unnamed Student',
+            photoURL: userData.photoURL,
+            email: userData.email,
+            role: userData.role,
+            phoneNumber: userData.phoneNumber,
+          };
+        }
+        return attendee;
+      });
+
+      const attendees = await Promise.all(attendeePromises);
+      return {
+        ...session,
+        attendees
+      };
+    } catch (error) {
+      console.error('Error loading session details:', error);
+      return session;
+    }
+  };
+
   const handleSearch = (event) => {
     setSearchTerm(event.target.value);
   };
@@ -109,17 +140,18 @@ const SessionHistory = ({ classId }) => {
     }));
   };
 
-  const renderSessionCard = (session) => {
+  const renderSessionCard = async (session) => {
+    const sessionWithDetails = await loadSessionDetails(session);
     const isExpanded = expandedCards[session.id];
-    const startTime = new Date(session.startTime);
-    const endTime = session.endTime ? new Date(session.endTime) : null;
+    const startTime = new Date(sessionWithDetails.startTime);
+    const endTime = sessionWithDetails.endTime ? new Date(sessionWithDetails.endTime) : null;
     const duration = endTime 
       ? Math.round((endTime - startTime) / (1000 * 60))
       : null;
 
     return (
       <Card 
-        key={session.id} 
+        key={sessionWithDetails.id} 
         sx={{ 
           mb: 2,
           '&:hover': {
@@ -130,9 +162,9 @@ const SessionHistory = ({ classId }) => {
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Typography variant="h6">
-              {session.book} - Page {session.startPage} to {session.endPage}
+              {sessionWithDetails.book} - Page {sessionWithDetails.startPage} to {sessionWithDetails.endPage}
             </Typography>
-            <IconButton onClick={() => handleExpandCard(session.id)}>
+            <IconButton onClick={() => handleExpandCard(sessionWithDetails.id)}>
               {isExpanded ? <ExpandLess /> : <ExpandMore />}
             </IconButton>
           </Box>
@@ -152,7 +184,7 @@ const SessionHistory = ({ classId }) => {
             )}
             <Chip 
               icon={<GroupIcon />} 
-              label={`${session.attendees?.length || 0} students`}
+              label={`${sessionWithDetails.attendees?.length || 0} students`}
               variant="outlined"
             />
           </Box>
@@ -170,7 +202,7 @@ const SessionHistory = ({ classId }) => {
                   <Paper variant="outlined" sx={{ p: 1 }}>
                     <Typography variant="body2" color="text.secondary">
                       <ImageIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                      {session.materials?.drawings?.length || 0} Drawings
+                      {sessionWithDetails.materials?.drawings?.length || 0} Drawings
                     </Typography>
                   </Paper>
                 </Grid>
@@ -178,7 +210,7 @@ const SessionHistory = ({ classId }) => {
                   <Paper variant="outlined" sx={{ p: 1 }}>
                     <Typography variant="body2" color="text.secondary">
                       <VideoIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                      {session.materials?.recordings?.length || 0} Recordings
+                      {sessionWithDetails.materials?.recordings?.length || 0} Recordings
                     </Typography>
                   </Paper>
                 </Grid>
@@ -188,35 +220,17 @@ const SessionHistory = ({ classId }) => {
               <Typography variant="subtitle1" gutterBottom>
                 Attendees
               </Typography>
-              <List dense>
-                {session.attendees?.map((attendee) => (
-                  <ListItem key={attendee.studentId}>
-                    <ListItemText
-                      primary={attendee.name}
-                      secondary={`Joined: ${format(new Date(attendee.joinTime), 'pp')}`}
-                    />
-                    {session.feedback?.studentFeedback?.[attendee.studentId] && (
-                      <Box>
-                        <Rating
-                          value={session.feedback.studentFeedback[attendee.studentId].assessment.reading}
-                          readOnly
-                          size="small"
-                        />
-                      </Box>
-                    )}
-                  </ListItem>
-                ))}
-              </List>
+              {renderAttendeeList(sessionWithDetails.attendees)}
 
               {/* Feedback Section */}
-              {session.feedback?.classNotes && (
+              {sessionWithDetails.feedback?.classNotes && (
                 <>
                   <Typography variant="subtitle1" gutterBottom>
                     Class Notes
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
                     <Typography variant="body2">
-                      {session.feedback.classNotes}
+                      {sessionWithDetails.feedback.classNotes}
                     </Typography>
                   </Paper>
                 </>
@@ -225,7 +239,7 @@ const SessionHistory = ({ classId }) => {
               <Box display="flex" justifyContent="flex-end">
                 <Button
                   variant="outlined"
-                  onClick={() => setSelectedSession(session)}
+                  onClick={() => setSelectedSession(sessionWithDetails)}
                 >
                   View Full Details
                 </Button>
@@ -236,6 +250,33 @@ const SessionHistory = ({ classId }) => {
       </Card>
     );
   };
+
+  const renderAttendeeList = (attendees) => (
+    <List dense>
+      {attendees.map((attendee) => (
+        <ListItem key={attendee.id}>
+          <ListItemAvatar>
+            <Avatar src={attendee.photoURL} alt={attendee.displayName}>
+              {attendee.displayName?.charAt(0)}
+            </Avatar>
+          </ListItemAvatar>
+          <ListItemText
+            primary={attendee.displayName}
+            secondary={
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  {attendee.email}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Progress: Page {attendee.startPage} → {attendee.endPage}
+                </Typography>
+              </Box>
+            }
+          />
+        </ListItem>
+      ))}
+    </List>
+  );
 
   return (
     <Box>

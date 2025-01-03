@@ -275,6 +275,70 @@ const IqraTeaching = () => {
     setShowStudentDetails(true);
   };
 
+  const loadStudents = async (classData) => {
+    try {
+      const studentPromises = classData.studentIds.map(async (studentId) => {
+        const studentDoc = await getDoc(doc(db, 'users', studentId));
+        if (studentDoc.exists()) {
+          const studentData = studentDoc.data();
+          return {
+            id: studentDoc.id,
+            displayName: studentData.displayName || 'Unnamed Student',
+            photoURL: studentData.photoURL,
+            email: studentData.email,
+            role: studentData.role,
+            phoneNumber: studentData.phoneNumber,
+            address: studentData.address,
+            bio: studentData.bio,
+            progress: classData.studentProgress?.[studentId] || {}
+          };
+        }
+        return null;
+      });
+
+      const students = (await Promise.all(studentPromises)).filter(Boolean);
+      return students;
+    } catch (error) {
+      console.error('Error loading students:', error);
+      setError('Failed to load student information');
+      return [];
+    }
+  };
+
+  const renderStudentList = (students) => (
+    <List>
+      {students.map((student) => (
+        <ListItem
+          key={student.id}
+          selected={selectedStudent?.id === student.id}
+          onClick={() => setSelectedStudent(student)}
+          sx={{ cursor: 'pointer' }}
+        >
+          <ListItemAvatar>
+            <Avatar src={student.photoURL} alt={student.displayName}>
+              {student.displayName?.charAt(0)}
+            </Avatar>
+          </ListItemAvatar>
+          <ListItemText
+            primary={student.displayName}
+            secondary={
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  {student.email}
+                </Typography>
+                {student.progress?.currentBook && (
+                  <Typography variant="caption" color="text.secondary">
+                    Current: Book {student.progress.currentBook}, Page {student.progress.currentPage || 1}
+                  </Typography>
+                )}
+              </Box>
+            }
+          />
+        </ListItem>
+      ))}
+    </List>
+  );
+
   const renderStudentDetailsDialog = () => {
     if (!selectedClassForStudents) return null;
 
@@ -296,64 +360,7 @@ const IqraTeaching = () => {
           </Box>
         </DialogTitle>
         <DialogContent>
-          <List>
-            {selectedClassForStudents.students.map((student) => (
-              <ListItem 
-                key={student.id}
-                sx={{
-                  borderRadius: 1,
-                  mb: 1,
-                  '&:hover': {
-                    bgcolor: 'rgba(0, 0, 0, 0.04)'
-                  }
-                }}
-              >
-                <ListItemAvatar>
-                  <Avatar 
-                    src={student.photoURL}
-                    sx={{ bgcolor: 'primary.main' }}
-                  >
-                    {student.name[0]}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={
-                    <Typography variant="subtitle1" fontWeight="medium">
-                      {student.name}
-                    </Typography>
-                  }
-                  secondary={
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Email: {student.email}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Current Progress: {student.progress?.currentBook || 'Not started'} - Page {student.progress?.currentPage || 1}
-                      </Typography>
-                    </Box>
-                  }
-                />
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<PlayIcon />}
-                  onClick={() => {
-                    handleStartSession(selectedClassForStudents.id, student.progress?.currentBook || selectedClassForStudents.course.iqraBooks[0]);
-                    setShowStudentDetails(false);
-                  }}
-                  sx={{
-                    ml: 2,
-                    boxShadow: 2,
-                    '&:hover': {
-                      boxShadow: 4
-                    }
-                  }}
-                >
-                  Start Session
-                </Button>
-              </ListItem>
-            ))}
-          </List>
+          {renderStudentList(selectedClassForStudents.students)}
         </DialogContent>
       </Dialog>
     );
@@ -463,92 +470,33 @@ const IqraTeaching = () => {
                 <Typography variant="h6" gutterBottom color="primary">
                   Students
                 </Typography>
-                <List>
-                  {classData.students.map((student) => (
-                    <ListItem 
-                      key={student.id} 
-                      button 
-                      onClick={() => {
-                        setSelectedStudent(student);
-                      }}
+                {renderStudentList(classData.students)}
+                <Divider sx={{ my: 2 }} />
+                <ListItem>
+                  <ListItemText 
+                    primary={
+                      <Typography variant="subtitle1" color="primary" fontWeight="medium">
+                        Start Class Session
+                      </Typography>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<PlayIcon />}
+                      onClick={() => handleStartSession(classData.id, classData.course.iqraBooks[0])}
                       sx={{
-                        borderRadius: 1,
-                        mb: 1,
+                        boxShadow: 2,
                         '&:hover': {
-                          bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          boxShadow: 4
                         }
                       }}
                     >
-                      <ListItemAvatar>
-                        <Avatar 
-                          src={student.photoURL}
-                          sx={{ 
-                            bgcolor: 'primary.main'
-                          }}
-                        >
-                          {student.name[0]}
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={
-                          <Typography variant="subtitle1" fontWeight="medium">
-                            {student.name}
-                          </Typography>
-                        }
-                        secondary={
-                          <Typography variant="body2" color="text.secondary">
-                            {student.progress?.currentBook || 'Not started'} - Page {student.progress?.currentPage || 1}
-                          </Typography>
-                        }
-                      />
-                      <ListItemSecondaryAction>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          startIcon={<PlayIcon />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartSession(classData.id, student.progress?.currentBook || classData.course.iqraBooks[0]);
-                          }}
-                          sx={{
-                            boxShadow: 2,
-                            '&:hover': {
-                              boxShadow: 4
-                            }
-                          }}
-                        >
-                          Start Individual Session
-                        </Button>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  ))}
-                  <Divider sx={{ my: 2 }} />
-                  <ListItem>
-                    <ListItemText 
-                      primary={
-                        <Typography variant="subtitle1" color="primary" fontWeight="medium">
-                          Start Class Session
-                        </Typography>
-                      }
-                    />
-                    <ListItemSecondaryAction>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        startIcon={<PlayIcon />}
-                        onClick={() => handleStartSession(classData.id, classData.course.iqraBooks[0])}
-                        sx={{
-                          boxShadow: 2,
-                          '&:hover': {
-                            boxShadow: 4
-                          }
-                        }}
-                      >
-                        Start Class Session
-                      </Button>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                </List>
+                      Start Class Session
+                    </Button>
+                  </ListItemSecondaryAction>
+                </ListItem>
               </CardContent>
             </Collapse>
           </Card>
