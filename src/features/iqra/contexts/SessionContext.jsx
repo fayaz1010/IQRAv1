@@ -47,6 +47,29 @@ export function SessionProvider({ children }) {
 
       const courseData = courseDoc.data();
 
+      // Load student data
+      let students = [];
+      if (classData.studentIds?.length > 0) {
+        const studentPromises = classData.studentIds.map(async (studentId) => {
+          try {
+            const studentRef = doc(db, 'users', studentId);
+            const studentDoc = await getDoc(studentRef);
+            if (studentDoc.exists()) {
+              return {
+                id: studentId,
+                ...studentDoc.data()
+              };
+            }
+          } catch (err) {
+            console.error(`Error loading student ${studentId}:`, err);
+          }
+          return null;
+        });
+        
+        const studentResults = await Promise.all(studentPromises);
+        students = studentResults.filter(s => s !== null);
+      }
+
       // Combine class and course data
       const combinedData = {
         ...classData,
@@ -54,13 +77,16 @@ export function SessionProvider({ children }) {
         course: {
           id: classData.courseId,
           ...courseData
-        }
+        },
+        students,
+        studentIds: classData.studentIds || [] // Keep the original studentIds array
       };
 
       setActiveClass(combinedData);
       return combinedData;
     } catch (error) {
       console.error('Error loading class data:', error);
+      setError(error.message);
       throw error;
     }
   };
@@ -68,10 +94,11 @@ export function SessionProvider({ children }) {
   // Start a new teaching session
   const startSession = async (classId, bookId, initialPage = 1) => {
     try {
+      setError(null);
       // Load class and course data first
       const classData = await loadClassData(classId);
       
-      if (!classData.course?.iqraBooks?.includes(bookId)) {
+      if (!classData?.course?.iqraBooks?.includes(bookId)) {
         throw new Error('Selected book is not in the course');
       }
 
@@ -99,10 +126,8 @@ export function SessionProvider({ children }) {
         book: bookId,
         startPage: initialPage,
         currentPage: initialPage,
-        endPage: initialPage,
-        status: 'active',
         studentProgress,
-        groupMode: true // Indicates this is a class-wide session
+        status: 'active'
       };
 
       // Create new session document
@@ -112,7 +137,7 @@ export function SessionProvider({ children }) {
       const session = {
         id: sessionRef.id,
         ...sessionData,
-        classData: classData
+        classData
       };
 
       setActiveSession(session);

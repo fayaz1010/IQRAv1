@@ -7,8 +7,6 @@ import {
   Button,
   TextField,
   Box,
-  Tabs,
-  Tab,
   Typography,
   Paper,
   Stack,
@@ -96,7 +94,6 @@ const EndSessionDialog = ({
     studentFeedback: {}
   });
 
-  // Initialize student feedback if not already set
   useEffect(() => {
     if (students?.length > 0) {
       const initialStudentFeedback = {};
@@ -215,6 +212,8 @@ const EndSessionDialog = ({
   };
 
   const renderStudentFeedback = (student) => {
+    if (!student) return null;
+    
     const studentFeedback = feedback.studentFeedback[student.id] || {};
     const pages = [];
     if (startPage && endPage) {
@@ -231,10 +230,15 @@ const EndSessionDialog = ({
           <Stack spacing={3}>
             {/* Student Header */}
             <Box display="flex" alignItems="center" gap={2}>
-              <Avatar sx={{ bgcolor: 'primary.main' }}>
-                {student.name.charAt(0)}
+              <Avatar 
+                src={student?.photoURL}
+                sx={{ bgcolor: 'primary.main' }}
+              >
+                {(student?.displayName || student?.name || 'S')?.charAt(0)}
               </Avatar>
-              <Typography variant="h6">{student.name}</Typography>
+              <Typography variant="h6">
+                {student?.displayName || student?.name || `Student ${student?.id || ''}`}
+              </Typography>
             </Box>
 
             <Divider />
@@ -399,11 +403,12 @@ const EndSessionDialog = ({
     <Dialog 
       open={open} 
       onClose={loading ? undefined : onClose}
-      maxWidth="md" 
+      maxWidth="lg" 
       fullWidth
       PaperProps={{
         sx: {
-          minHeight: '80vh'
+          minHeight: '80vh',
+          maxHeight: '90vh'
         }
       }}
     >
@@ -424,47 +429,36 @@ const EndSessionDialog = ({
             </Alert>
           )}
 
-          <Tabs 
-            value={activeTab} 
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{ 
-              borderBottom: 1, 
-              borderColor: 'divider',
-              minHeight: 48,
-              '& .MuiTab-root': {
-                minHeight: 48,
-                textTransform: 'none'
-              }
-            }}
-          >
-            <Tab 
-              icon={<SchoolIcon />} 
-              label="Class Feedback"
-              iconPosition="start"
-              {...a11yProps(0)}
-              sx={{ 
-                flexDirection: 'row',
-                gap: 1,
-                alignItems: 'center'
-              }}
-            />
-            {students?.map((student, index) => (
-              <Tab
-                key={student.id}
-                icon={<PersonIcon />}
-                iconPosition="start"
-                label={student.name}
-                {...a11yProps(index + 1)}
-                sx={{ 
-                  flexDirection: 'row',
-                  gap: 1,
-                  alignItems: 'center'
-                }}
-              />
-            ))}
-          </Tabs>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+              <Button
+                variant={activeTab === 0 ? "contained" : "outlined"}
+                onClick={() => setActiveTab(0)}
+                startIcon={<SchoolIcon />}
+                sx={{ textTransform: 'none' }}
+              >
+                Class Feedback
+              </Button>
+              {students?.map((student, index) => (
+                <Button
+                  key={student.id}
+                  variant={activeTab === index + 1 ? "contained" : "outlined"}
+                  onClick={() => setActiveTab(index + 1)}
+                  startIcon={
+                    <Avatar 
+                      src={student?.photoURL}
+                      sx={{ width: 24, height: 24 }}
+                    >
+                      {(student?.displayName || student?.name || 'S')?.charAt(0)}
+                    </Avatar>
+                  }
+                  sx={{ textTransform: 'none' }}
+                >
+                  {student?.displayName || student?.name || `Student ${index + 1}`}
+                </Button>
+              ))}
+            </Stack>
+          </Box>
 
           <Box sx={{ mt: 2 }}>
             <TabPanel value={activeTab} index={0}>
