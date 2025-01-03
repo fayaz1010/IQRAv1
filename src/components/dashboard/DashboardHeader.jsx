@@ -1,18 +1,15 @@
 import { useState } from 'react';
 import {
   Box,
-  Typography,
-  Avatar,
-  Chip,
   IconButton,
   Menu,
   MenuItem,
   Divider,
   useTheme,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  AccountCircle as AccountIcon,
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon,
   Brightness4 as DarkModeIcon,
@@ -22,6 +19,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme as useAppTheme } from '../../contexts/ThemeContext';
+import User from '../user/User';
 
 const DashboardHeader = () => {
   const theme = useTheme();
@@ -44,17 +42,6 @@ const DashboardHeader = () => {
       navigate('/', { replace: true });
     } catch (error) {
       console.error('Failed to log out:', error);
-    }
-  };
-
-  const getRoleColor = (role) => {
-    switch (role) {
-      case 'admin':
-        return theme.palette.error.main;
-      case 'teacher':
-        return theme.palette.primary.main;
-      default:
-        return theme.palette.grey[500];
     }
   };
 
@@ -96,28 +83,14 @@ const DashboardHeader = () => {
           </IconButton>
         </Tooltip>
 
-        <IconButton
+        <User
+          userData={currentUser}
+          variant="compact"
+          showProgress={false}
           onClick={handleMenu}
-          color="inherit"
-          sx={{
-            padding: 0.5,
-            borderRadius: 1,
-          }}
-        >
-          <Avatar
-            sx={{
-              width: 32,
-              height: 32,
-              bgcolor: theme.palette.primary.main,
-              color: theme.palette.primary.contrastText,
-            }}
-          >
-            {currentUser?.email?.charAt(0).toUpperCase() || 'U'}
-          </Avatar>
-        </IconButton>
+        />
 
         <Menu
-          id="menu-appbar"
           anchorEl={anchorEl}
           anchorOrigin={{
             vertical: 'bottom',
@@ -131,17 +104,23 @@ const DashboardHeader = () => {
           open={Boolean(anchorEl)}
           onClose={handleClose}
         >
-          <MenuItem onClick={() => navigate('/profile')}>
-            <AccountIcon sx={{ mr: 1 }} />
+          <MenuItem onClick={() => {
+            handleClose();
+            navigate('/profile');
+          }}>
             Profile
           </MenuItem>
-          <MenuItem onClick={() => navigate('/settings')}>
-            <SettingsIcon sx={{ mr: 1 }} />
+          <MenuItem onClick={() => {
+            handleClose();
+            navigate('/settings');
+          }}>
             Settings
           </MenuItem>
           <Divider />
-          <MenuItem onClick={handleLogout}>
-            <LogoutIcon sx={{ mr: 1 }} />
+          <MenuItem onClick={() => {
+            handleClose();
+            handleLogout();
+          }}>
             Logout
           </MenuItem>
         </Menu>

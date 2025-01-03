@@ -50,6 +50,24 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Helper functions to check session access
+    function isTeacherOfSession(sessionData) {
+      return isTeacher() && sessionData.teacherId == request.auth.uid;
+    }
+
+    function isStudentInSession(sessionData) {
+      return isStudent() && request.auth.uid in sessionData.studentProgress;
+    }
+
+    function isParentOfStudentInSession(sessionData) {
+      return isParent() && 
+        getUserData().children.hasAny(sessionData.studentProgress.keys());
+    }
+
+    function hasChild(progress) {
+      return getUserData().children.hasAny(progress.keys());
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated() && (
@@ -183,11 +201,13 @@ service cloud.firestore {
         );
     }
 
-    // Sessions collection (for individual class sessions)
+    // Sessions collection
     match /sessions/{sessionId} {
       allow create: if isAuthenticated() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (getUserData().role in ['teacher', 'admin']);
+        (getUserData().role in ['teacher', 'admin']) &&
+        exists(/databases/$(database)/documents/classes/$(request.resource.data.classId)) &&
+        get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.teacherId == request.auth.uid;
       
       allow read: if isAuthenticated() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&

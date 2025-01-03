@@ -25,6 +25,8 @@ import {
   Chip,
   Avatar,
   ListItemAvatar,
+  Stack,
+  Link,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -32,6 +34,7 @@ import {
   Delete as DeleteIcon,
   Person as PersonIcon,
   Book as BookIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
@@ -401,16 +404,26 @@ const Classes = () => {
       }}
     >
       <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-          <Typography variant="h4">Class Management</Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
-          >
-            Create Class
-          </Button>
-        </Box>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+          <Typography variant="h4">Classes</Typography>
+          <Stack direction="row" spacing={2}>
+            <Button
+              component={Link}
+              to="/sessions/history"
+              startIcon={<HistoryIcon />}
+              variant="outlined"
+            >
+              Session History
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+            >
+              Add Class
+            </Button>
+          </Stack>
+        </Stack>
 
         <Grid container spacing={3}>
           {classes.map((class_) => (
@@ -428,6 +441,15 @@ const Classes = () => {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="h6">{class_.name}</Typography>
                     <Box>
+                      <Button
+                        size="small"
+                        startIcon={<HistoryIcon />}
+                        component={Link}
+                        to={`/sessions/history?class=${class_.id}`}
+                        sx={{ mr: 1 }}
+                      >
+                        View History
+                      </Button>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenDialog(class_)}

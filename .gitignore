@@ -51,6 +51,7 @@ firebase-export-*
 service-account-key.json
 *-service-account.json
 *-service-account-key.json
+functions/node_modules/
 
 # Build files
 /build

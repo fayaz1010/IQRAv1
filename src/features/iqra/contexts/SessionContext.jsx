@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { db } from '../../../config/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { createGoogleMeet, deleteGoogleMeet } from '../../../config/googleMeet';
 
 export const SessionContext = createContext(null);
 
@@ -118,6 +119,28 @@ export function SessionProvider({ children }) {
         };
       });
 
+      let meetData = null;
+      // Try to create Google Meet, but don't block session creation if it fails
+      try {
+        const studentEmails = classData.students?.map(student => student.email) || [];
+        const meetTitle = `${classData.name} - Iqra Session`;
+        const meetResponse = await createGoogleMeet(
+          meetTitle,
+          new Date().toISOString(),
+          60,
+          studentEmails
+        );
+        meetData = {
+          link: meetResponse.meetLink,
+          eventId: meetResponse.eventId,
+          startTime: meetResponse.startTime,
+          endTime: meetResponse.endTime
+        };
+      } catch (meetError) {
+        console.warn('Failed to create Google Meet:', meetError);
+        // Continue without Meet integration
+      }
+
       const sessionData = {
         teacherId: currentUser.uid,
         classId,
@@ -127,7 +150,8 @@ export function SessionProvider({ children }) {
         startPage: initialPage,
         currentPage: initialPage,
         studentProgress,
-        status: 'active'
+        status: 'active',
+        ...(meetData && { meet: meetData }) // Only include meet data if available
       };
 
       // Create new session document
@@ -206,6 +230,7 @@ export function SessionProvider({ children }) {
     }
   };
 
+  // End the current teaching session
   const endSession = async (feedback) => {
     if (!activeSession) {
       throw new Error('No active session');
@@ -217,11 +242,22 @@ export function SessionProvider({ children }) {
       // Generate a readable session ID
       const sessionId = `${activeSession.book}-${new Date().toISOString().split('T')[0]}-${activeSession.id.slice(-6)}`;
       
+      // Try to delete Google Meet event if it exists
+      if (activeSession.meet?.eventId) {
+        try {
+          await deleteGoogleMeet(activeSession.meet.eventId);
+        } catch (meetError) {
+          console.error('Failed to delete Google Meet:', meetError);
+          // Continue with session end even if Meet deletion fails
+        }
+      }
+
       // Update session with end time, status and feedback
       await updateDoc(sessionRef, {
-        endTime: new Date().toISOString(),
         status: 'completed',
+        endTime: new Date().toISOString(),
         sessionId,
+        endPage: activeSession.currentPage,
         feedback: {
           classNotes: feedback.classNotes,
           studentFeedback: Object.entries(feedback.studentFeedback).reduce((acc, [studentId, data]) => {
@@ -294,6 +330,7 @@ export function SessionProvider({ children }) {
       setActiveClass(null);
     } catch (error) {
       console.error('Error ending session:', error);
+      setError(error.message);
       throw error;
     }
   };

@@ -47,6 +47,7 @@ import {
   NavigateBefore,
   NavigateNext,
   Stop as StopIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useSession } from '../contexts/SessionContext';
@@ -56,6 +57,7 @@ import IqraBookViewer from './IqraBookViewer';
 import PracticeArea from './PracticeArea';
 import { Stage, Layer, Line } from 'react-konva';
 import EndSessionDialog from './EndSessionDialog';
+import { Link } from 'react-router-dom';
 
 const IqraTeaching = () => {
   const { currentUser } = useAuth();
@@ -141,7 +143,7 @@ const IqraTeaching = () => {
       if (!activeSession) return;
 
       const drawingsRef = collection(db, 'drawings');
-      const q = query(
+      let queryRef = query(
         drawingsRef,
         where('classId', '==', activeSession.classId),
         where('page', '==', activeSession.currentPage),
@@ -149,10 +151,10 @@ const IqraTeaching = () => {
       );
 
       if (selectedStudent) {
-        q = query(q, where('studentId', '==', selectedStudent.id));
+        queryRef = query(queryRef, where('studentId', '==', selectedStudent.id));
       }
 
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await getDocs(queryRef);
       if (!querySnapshot.empty) {
         // Get the most recent drawing
         const sortedDrawings = querySnapshot.docs
@@ -322,14 +324,14 @@ const IqraTeaching = () => {
           <ListItemText
             primary={student.displayName}
             secondary={
-              <Box>
-                <Typography variant="body2" color="text.secondary">
+              <Box component="div">
+                <Box component="span" sx={{ display: 'block' }}>
                   {student.email}
-                </Typography>
+                </Box>
                 {student.progress?.currentBook && (
-                  <Typography variant="caption" color="text.secondary">
+                  <Box component="span" sx={{ display: 'block', fontSize: '0.75rem' }}>
                     Current: Book {student.progress.currentBook}, Page {student.progress.currentPage || 1}
-                  </Typography>
+                  </Box>
                 )}
               </Box>
             }
@@ -753,16 +755,33 @@ const IqraTeaching = () => {
 
   return (
     <Box p={3}>
-      <Typography variant="h4" gutterBottom>
-        Iqra Teaching Dashboard
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">
+          Iqra Teaching Dashboard
+        </Typography>
+        <Button
+          component={Link}
+          to="/sessions/history"
+          startIcon={<HistoryIcon />}
+          variant="outlined"
+        >
+          View Session History
+        </Button>
+      </Stack>
       
       {activeSession ? renderTeachingSession() : renderClassList()}
       {renderStudentDetailsDialog()}
       <EndSessionDialog
         open={openEndSession}
         onClose={() => setOpenEndSession(false)}
-        students={activeClass?.students?.map(student => ({ id: student.id, name: student.name, email: student.email })) || []}
+        students={activeClass?.students?.map(student => ({
+          id: student.id,
+          name: student.name,
+          email: student.email,
+          photoURL: student.photoURL,
+          role: student.role,
+          displayName: student.displayName || student.name
+        })) || []}
         currentBook={activeSession?.book}
         startPage={activeSession?.startPage}
         endPage={activeSession?.currentPage}

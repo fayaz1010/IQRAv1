@@ -5,10 +5,12 @@ import {
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  getIdTokenResult,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import { httpsCallable, getFunctions } from 'firebase/functions';
 
 const AuthContext = createContext();
 
@@ -19,25 +21,43 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const functions = getFunctions();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Get user data from Firestore
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setCurrentUser({ 
-            ...user, 
-            ...userData,
-            role: userData.role || 'student' // Ensure role is always set
-          });
-        } else {
-          // Set default role if no user document exists
-          setCurrentUser({
-            ...user,
-            role: 'student'
-          });
+        try {
+          // Get user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            
+            // Get the user's ID token result to check custom claims
+            const tokenResult = await getIdTokenResult(user, true);
+            const role = tokenResult.claims.role || userData.role || 'student';
+            
+            // If the role in token doesn't match Firestore, update custom claims
+            if (role !== userData.role) {
+              const setUserRole = httpsCallable(functions, 'setUserRole');
+              await setUserRole({ userId: user.uid, role: userData.role });
+              // Force token refresh
+              await user.getIdToken(true);
+            }
+
+            setCurrentUser({ 
+              ...user, 
+              ...userData,
+              role: userData.role || 'student'
+            });
+          } else {
+            setCurrentUser({
+              ...user,
+              role: 'student'
+            });
+          }
+        } catch (error) {
+          console.error('Error setting up user:', error);
+          setCurrentUser(null);
         }
       } else {
         setCurrentUser(null);
@@ -46,7 +66,7 @@ export function AuthProvider({ children }) {
     });
 
     return unsubscribe;
-  }, []);
+  }, [functions]);
 
   async function signup(email, password, role = 'student') {
     try {
