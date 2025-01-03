@@ -10,72 +10,85 @@ import {
   Tabs,
   Tab,
   Typography,
-  Rating,
   Paper,
-  Alert,
-  CircularProgress,
+  Stack,
   Divider,
+  Rating,
+  FormControl,
+  Select,
+  MenuItem,
+  Chip,
+  Alert,
+  Avatar,
+  CircularProgress,
   List,
   ListItem,
   ListItemText,
   ListItemAvatar,
-  Avatar,
-  Chip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Stack
+  InputLabel
 } from '@mui/material';
 import {
   School as SchoolIcon,
   Person as PersonIcon,
-  Save as SaveIcon,
-  Close as CloseIcon,
   MenuBook as MenuBookIcon,
   RecordVoiceOver as VoiceIcon,
-  Psychology as MemoryIcon
+  Psychology as MemoryIcon,
+  Close as CloseIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 
-const TabPanel = ({ children, value, index, ...other }) => (
-  <div
-    role="tabpanel"
-    hidden={value !== index}
-    id={`session-feedback-tabpanel-${index}`}
-    {...other}
-  >
-    {value === index && <Box sx={{ p: 2 }}>{children}</Box>}
-  </div>
-);
-
 const AREAS_OF_IMPROVEMENT = [
-  'Pronunciation accuracy',
-  'Reading fluency',
-  'Letter recognition',
-  'Memorization speed',
-  'Focus and attention',
-  'Practice consistency'
+  'Letter Recognition',
+  'Letter Sounds',
+  'Fluency',
+  'Attention Span',
+  'Confidence',
+  'Following Instructions'
 ];
 
 const STRENGTHS = [
-  'Clear pronunciation',
-  'Smooth reading flow',
-  'Quick memorization',
-  'Good focus',
-  'Regular practice',
-  'Positive attitude'
+  'Quick Learning',
+  'Good Memory',
+  'Clear Pronunciation',
+  'Focused',
+  'Enthusiastic',
+  'Good Listening'
 ];
 
-const EndSessionDialog = ({ 
-  open, 
-  onClose, 
-  onSave, 
-  students = [], 
-  loading = false, 
-  error = null,
+const TabPanel = (props) => {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`session-feedback-tabpanel-${index}`}
+      aria-labelledby={`session-feedback-tab-${index}`}
+      {...other}
+      style={{ padding: value === index ? '24px 0' : 0 }}
+    >
+      {value === index && children}
+    </div>
+  );
+};
+
+function a11yProps(index) {
+  return {
+    id: `session-feedback-tab-${index}`,
+    'aria-controls': `session-feedback-tabpanel-${index}`,
+  };
+}
+
+const EndSessionDialog = ({
+  open,
+  onClose,
+  onSave,
+  students = [],
   currentBook,
   startPage,
-  endPage
+  endPage,
+  loading = false,
+  error
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [feedback, setFeedback] = useState({
@@ -309,6 +322,7 @@ const EndSessionDialog = ({
                 Areas of Improvement
               </Typography>
               <FormControl fullWidth>
+                <InputLabel id="areas-of-improvement-label">Areas of Improvement</InputLabel>
                 <Select
                   multiple
                   value={studentFeedback.areasOfImprovement || []}
@@ -337,6 +351,7 @@ const EndSessionDialog = ({
                 Strengths
               </Typography>
               <FormControl fullWidth>
+                <InputLabel id="strengths-label">Strengths</InputLabel>
                 <Select
                   multiple
                   value={studentFeedback.strengths || []}
@@ -414,43 +429,63 @@ const EndSessionDialog = ({
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
-            sx={{ borderBottom: 1, borderColor: 'divider' }}
+            sx={{ 
+              borderBottom: 1, 
+              borderColor: 'divider',
+              minHeight: 48,
+              '& .MuiTab-root': {
+                minHeight: 48,
+                textTransform: 'none'
+              }
+            }}
           >
             <Tab 
               icon={<SchoolIcon />} 
-              label="Class Feedback" 
-              id="session-feedback-tab-0"
+              label="Class Feedback"
+              iconPosition="start"
+              {...a11yProps(0)}
+              sx={{ 
+                flexDirection: 'row',
+                gap: 1,
+                alignItems: 'center'
+              }}
             />
             {students?.map((student, index) => (
               <Tab
                 key={student.id}
                 icon={<PersonIcon />}
+                iconPosition="start"
                 label={student.name}
-                id={`session-feedback-tab-${index + 1}`}
-                wrapped
+                {...a11yProps(index + 1)}
+                sx={{ 
+                  flexDirection: 'row',
+                  gap: 1,
+                  alignItems: 'center'
+                }}
               />
             ))}
           </Tabs>
 
-          <TabPanel value={activeTab} index={0}>
-            <TextField
-              label="Class Feedback"
-              multiline
-              rows={4}
-              fullWidth
-              value={feedback.classNotes}
-              onChange={handleClassNotesChange}
-              disabled={loading}
-              placeholder="Enter general feedback for the entire class..."
-              sx={{ mt: 2 }}
-            />
-          </TabPanel>
-
-          {students?.map((student, index) => (
-            <TabPanel key={student.id} value={activeTab} index={index + 1}>
-              {renderStudentFeedback(student)}
+          <Box sx={{ mt: 2 }}>
+            <TabPanel value={activeTab} index={0}>
+              <TextField
+                label="Class Feedback"
+                multiline
+                rows={4}
+                fullWidth
+                value={feedback.classNotes}
+                onChange={handleClassNotesChange}
+                disabled={loading}
+                placeholder="Enter general feedback for the entire class..."
+              />
             </TabPanel>
-          ))}
+
+            {students?.map((student, index) => (
+              <TabPanel key={student.id} value={activeTab} index={index + 1}>
+                {renderStudentFeedback(student)}
+              </TabPanel>
+            ))}
+          </Box>
         </Box>
       </DialogContent>
 

@@ -814,7 +814,7 @@ const IqraTeaching = () => {
       <EndSessionDialog
         open={openEndSession}
         onClose={() => setOpenEndSession(false)}
-        students={activeClass?.students || []}
+        students={activeClass?.students?.map(student => ({ id: student.id, name: student.name, email: student.email })) || []}
         currentBook={activeSession?.book}
         startPage={activeSession?.startPage}
         endPage={activeSession?.currentPage}

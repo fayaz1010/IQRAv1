@@ -189,13 +189,31 @@ export function SessionProvider({ children }) {
     try {
       const sessionRef = doc(db, 'sessions', activeSession.id);
       
+      // Generate a readable session ID
+      const sessionId = `${activeSession.book}-${new Date().toISOString().split('T')[0]}-${activeSession.id.slice(-6)}`;
+      
       // Update session with end time, status and feedback
       await updateDoc(sessionRef, {
         endTime: new Date().toISOString(),
         status: 'completed',
+        sessionId,
         feedback: {
           classNotes: feedback.classNotes,
-          studentFeedback: feedback.studentFeedback
+          studentFeedback: Object.entries(feedback.studentFeedback).reduce((acc, [studentId, data]) => {
+            acc[studentId] = {
+              ...data,
+              pageNotes: data.pageNotes || {}, // Store page-specific feedback
+              assessment: {
+                reading: data.assessment?.reading || 0,
+                pronunciation: data.assessment?.pronunciation || 0,
+                memorization: data.assessment?.memorization || 0
+              },
+              areasOfImprovement: data.areasOfImprovement || [],
+              strengths: data.strengths || [],
+              notes: data.notes || ''
+            };
+            return acc;
+          }, {})
         }
       });
 
@@ -216,15 +234,27 @@ export function SessionProvider({ children }) {
             };
           }
 
-          // Add session assessment
+          // Add session assessment with page-specific notes
           updatedProgress[studentId].assessments.push({
-            sessionId: activeSession.id,
+            sessionId,
             date: new Date().toISOString(),
             book: activeSession.book,
             startPage: activeSession.startPage,
             endPage: activeSession.currentPage,
             assessment: data.assessment,
+            pageNotes: data.pageNotes || {}, // Include page-specific notes
+            areasOfImprovement: data.areasOfImprovement,
+            strengths: data.strengths,
             notes: data.notes
+          });
+
+          // Add session reference
+          updatedProgress[studentId].sessions.push({
+            sessionId,
+            date: new Date().toISOString(),
+            book: activeSession.book,
+            startPage: activeSession.startPage,
+            endPage: activeSession.currentPage
           });
         });
 
