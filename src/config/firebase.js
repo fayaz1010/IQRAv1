@@ -1,7 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, browserLocalPersistence, setPersistence } from "firebase/auth";
+import { getAuth, browserLocalPersistence, setPersistence, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -23,6 +23,12 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// Configure Google Auth Provider
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+
 // Set persistence to local
 setPersistence(auth, browserLocalPersistence)
   .catch((error) => {
@@ -30,4 +36,4 @@ setPersistence(auth, browserLocalPersistence)
   });
 
 // Export initialized services
-export { app, analytics, auth, db, storage };
+export { app, analytics, auth, db, storage, googleProvider };

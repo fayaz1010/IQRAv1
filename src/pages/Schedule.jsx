@@ -44,6 +44,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { getSchedules } from '../services/scheduleService';
 import SchedulingWizard from '../features/iqra/components/schedule/SchedulingWizard';
+import ScheduleItem from '../features/iqra/components/schedule/ScheduleItem';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -197,111 +198,62 @@ const Schedule = () => {
     setAnchorEl(null);
   };
 
-  const renderListView = () => (
-    <Grid container spacing={3}>
-      {schedules.map((schedule) => {
-        const classInfo = classDetails[schedule.classId] || {};
-        console.log('Rendering schedule:', schedule);
-        console.log('Class info:', classInfo);
-        return (
-          <Grid item xs={12} key={schedule.id}>
-            <Card sx={{ 
-              bgcolor: 'background.paper',
-              '&:hover': { bgcolor: 'background.paper' }
-            }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" component="div" sx={{ color: 'white' }}>
-                    {classInfo.name || 'Untitled Class'}
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Tooltip title={`${classInfo.students?.length || 0} Students`}>
-                      <IconButton 
-                        onClick={(e) => handleStudentsClick(e, classInfo.students || [])}
-                        size="small"
-                        sx={{ color: 'white' }}
-                      >
-                        <Badge 
-                          badgeContent={classInfo.students?.length || 0} 
-                          color="primary"
-                        >
-                          <PeopleIcon />
-                        </Badge>
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
-                
-                <Typography 
-                  variant="subtitle1" 
-                  sx={{ 
-                    color: theme.palette.primary.main,
-                    mb: 2 
-                  }}
-                >
-                  {classInfo.courseName}
-                </Typography>
+  const renderListView = () => {
+    if (loading) {
+      return (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      );
+    }
 
-                <Box sx={{ mt: 2 }}>
-                  {schedule.daysOfWeek.map((day) => (
-                    <Box 
-                      key={day} 
-                      sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        mb: 1,
-                        p: 1,
-                        borderRadius: 1,
-                        '&:hover': { bgcolor: 'action.hover' }
-                      }}
-                    >
-                      <EventIcon sx={{ mr: 2, color: 'white' }} />
-                      <Typography sx={{ flex: 1, color: 'white' }}>
-                        {DAYS[day]}
-                        {' - '}
-                        {formatTime(schedule.timeSlots[day])}
-                      </Typography>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<VideoCallIcon />}
-                        href={schedule.meetLink || '#'}
-                        target="_blank"
-                        sx={{ 
-                          ml: 2,
-                          bgcolor: theme.palette.primary.main,
-                          '&:hover': {
-                            bgcolor: theme.palette.primary.dark,
-                          }
-                        }}
-                      >
-                        Join Class
-                      </Button>
-                    </Box>
-                  ))}
-                </Box>
+    if (error) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      );
+    }
 
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mt: 2,
-                    color: 'text.secondary',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5
-                  }}
-                >
-                  <Box component="span" sx={{ color: 'text.secondary' }}>
-                    Duration: {schedule.duration} minutes
-                  </Box>
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        );
-      })}
-    </Grid>
-  );
+    if (schedules.length === 0) {
+      return (
+        <Box textAlign="center" p={4}>
+          <Typography color="text.secondary">
+            No schedules found. Click the "Schedule New Class" button to create one.
+          </Typography>
+        </Box>
+      );
+    }
+
+    // Group schedules by class
+    const groupedSchedules = schedules.reduce((acc, schedule) => {
+      const classId = schedule.classId;
+      if (!acc[classId]) {
+        acc[classId] = [];
+      }
+      acc[classId].push(schedule);
+      return acc;
+    }, {});
+
+    return Object.entries(groupedSchedules).map(([classId, classSchedules]) => (
+      <Box key={classId} sx={{ mb: 4 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>
+          {classDetails[classId]?.name || 'Loading...'}
+        </Typography>
+        {classSchedules.map((schedule) => (
+          <ScheduleItem
+            key={schedule.id}
+            schedule={schedule}
+            classData={classDetails[classId]}
+            onUpdate={fetchSchedules}
+            onDelete={(scheduleId) => {
+              setSchedules(schedules.filter(s => s.id !== scheduleId));
+            }}
+          />
+        ))}
+      </Box>
+    ));
+  };
 
   const renderStudentsList = (students) => (
     <List sx={{ 

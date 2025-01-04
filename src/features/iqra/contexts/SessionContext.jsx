@@ -122,22 +122,37 @@ export function SessionProvider({ children }) {
       let meetData = null;
       // Try to create Google Meet, but don't block session creation if it fails
       try {
+        console.log('Creating Google Meet for session...');
         const studentEmails = classData.students?.map(student => student.email) || [];
         const meetTitle = `${classData.name} - Iqra Session`;
+        console.log('Meet details:', { meetTitle, studentEmails });
+        
         const meetResponse = await createGoogleMeet(
           meetTitle,
           new Date().toISOString(),
           60,
-          studentEmails
+          studentEmails,
+          currentUser.email // Pass teacher's email
         );
+        console.log('Meet created successfully:', meetResponse);
+        
         meetData = {
           link: meetResponse.meetLink,
           eventId: meetResponse.eventId,
           startTime: meetResponse.startTime,
           endTime: meetResponse.endTime
         };
+        console.log('Meet data prepared:', meetData);
       } catch (meetError) {
-        console.warn('Failed to create Google Meet:', meetError);
+        console.error('Failed to create Google Meet - Full error:', meetError);
+        // Show a more user-friendly error message
+        if (meetError.message?.includes('has not been used in project') || 
+            meetError.message?.includes('it is disabled')) {
+          console.warn('Google Calendar API not enabled - continuing without Meet');
+        } else {
+          // For other errors, might want to show a notification to the user
+          console.error('Unexpected error creating Meet:', meetError);
+        }
         // Continue without Meet integration
       }
 
@@ -154,6 +169,8 @@ export function SessionProvider({ children }) {
         ...(meetData && { meet: meetData }) // Only include meet data if available
       };
 
+      console.log('Creating session with data:', sessionData);
+
       // Create new session document
       const sessionRef = doc(collection(db, 'sessions'));
       await setDoc(sessionRef, sessionData);
@@ -164,6 +181,7 @@ export function SessionProvider({ children }) {
         classData
       };
 
+      console.log('Session created successfully:', session);
       setActiveSession(session);
       return session;
     } catch (error) {

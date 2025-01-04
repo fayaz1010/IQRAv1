@@ -48,6 +48,7 @@ import {
   NavigateNext,
   Stop as StopIcon,
   History as HistoryIcon,
+  VideoCall as VideoCallIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useSession } from '../contexts/SessionContext';
@@ -58,6 +59,7 @@ import PracticeArea from './PracticeArea';
 import { Stage, Layer, Line } from 'react-konva';
 import EndSessionDialog from './EndSessionDialog';
 import { Link } from 'react-router-dom';
+import GoogleMeetControls from './GoogleMeetControls';
 
 const IqraTeaching = () => {
   const { currentUser } = useAuth();
@@ -89,6 +91,8 @@ const IqraTeaching = () => {
 
   const [openEndSession, setOpenEndSession] = useState(false);
   const [endingSession, setEndingSession] = useState(false);
+  const [showMeetControls, setShowMeetControls] = useState(false);
+  const [meetError, setMeetError] = useState(null);
 
   useEffect(() => {
     if (currentUser) {
@@ -137,6 +141,17 @@ const IqraTeaching = () => {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, [activeSession]);
+
+  useEffect(() => {
+    console.log('Active session updated:', activeSession);
+    if (activeSession?.meet?.link) {
+      console.log('Meet link found:', activeSession.meet.link);
+      setShowMeetControls(true);
+    } else {
+      console.log('No Meet link found in session');
+      setShowMeetControls(false);
+    }
+  }, [activeSession?.meet?.link]);
 
   const loadSavedDrawing = async () => {
     try {
@@ -525,6 +540,31 @@ const IqraTeaching = () => {
 
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {error && (
+          <Alert severity="error" onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+        
+        {meetError && (
+          <Snackbar 
+            open={!!meetError} 
+            autoHideDuration={6000} 
+            onClose={() => setMeetError(null)}
+          >
+            <Alert severity="error" onClose={() => setMeetError(null)}>
+              {meetError}
+            </Alert>
+          </Snackbar>
+        )}
+
+        {showMeetControls && activeSession?.meet?.link && (
+          <GoogleMeetControls 
+            meetLink={activeSession.meet.link}
+            onError={setMeetError}
+          />
+        )}
+
         <Paper sx={{ p: 2, mb: 2 }}>
           <Box display="flex" justifyContent="space-between" alignItems="center">
             <Box>
@@ -598,6 +638,16 @@ const IqraTeaching = () => {
                 disabled={!activeSession}
               >
                 End Session
+              </Button>
+
+              <Button
+                variant="contained"
+                color={showMeetControls ? "success" : "primary"}
+                startIcon={<VideoCallIcon />}
+                onClick={() => setShowMeetControls(!showMeetControls)}
+                disabled={!activeSession?.meet?.link}
+              >
+                {showMeetControls ? "Hide Meet Controls" : "Show Meet Controls"}
               </Button>
             </Box>
           </Box>

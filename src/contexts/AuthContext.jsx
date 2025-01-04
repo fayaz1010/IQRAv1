@@ -133,10 +133,10 @@ export function AuthProvider({ children }) {
 
   async function loginWithGoogle(role = 'student') {
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+      // Use the configured provider from firebase.js
+      const { googleProvider } = await import('../config/firebase');
       
-      const userCredential = await signInWithPopup(auth, provider);
+      const userCredential = await signInWithPopup(auth, googleProvider);
       const user = userCredential.user;
 
       // Check if user exists in Firestore
@@ -147,6 +147,8 @@ export function AuthProvider({ children }) {
         // Create new user profile
         const userData = {
           email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
           role: role,
           status: role === 'teacher' ? 'pending' : 'active',
           createdAt: new Date().toISOString(),
@@ -178,8 +180,19 @@ export function AuthProvider({ children }) {
           return { success: false, error: message };
         }
 
+        // Update user data with latest Google info
+        const updatedUserData = {
+          ...userData,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          lastLoginAt: new Date().toISOString()
+        };
+        
+        // Update Firestore
+        await updateDoc(userRef, updatedUserData);
+
         // Update current user state
-        const updatedUser = { ...user, ...userData };
+        const updatedUser = { ...user, ...updatedUserData };
         setCurrentUser(updatedUser);
         return { success: true, user: updatedUser };
       }

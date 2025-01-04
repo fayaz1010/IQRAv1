@@ -298,6 +298,12 @@ service cloud.firestore {
       }
     }
 
+    // Meet credentials collection
+    match /meetCredentials/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId);
+    }
+
     // Parent-Student relationships
     match /parent-student/{relationId} {
       allow read: if isAuthenticated() && (

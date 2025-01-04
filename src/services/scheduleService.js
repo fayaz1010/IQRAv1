@@ -1,6 +1,6 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { createCalendarEvent } from './calendarService';
+import { createCalendarEvent, updateCalendarEvent } from './calendarService';
 
 export const createSchedule = async (scheduleData) => {
   try {
@@ -133,6 +133,44 @@ export const updateSchedule = async (scheduleId, updates) => {
     return true;
   } catch (error) {
     console.error('Error updating schedule:', error);
+    throw error;
+  }
+};
+
+export const updateSingleSession = async (scheduleId, dayIndex, updates) => {
+  try {
+    const scheduleRef = doc(db, 'schedules', scheduleId);
+    const scheduleDoc = await getDoc(scheduleRef);
+    
+    if (!scheduleDoc.exists()) {
+      throw new Error('Schedule not found');
+    }
+
+    const schedule = scheduleDoc.data();
+    const timeSlots = { ...schedule.timeSlots };
+    
+    // Update only the specific day's time slot
+    if (updates.timeSlot) {
+      timeSlots[dayIndex] = updates.timeSlot.toISOString();
+    }
+
+    // Update the schedule document
+    await updateDoc(scheduleRef, {
+      timeSlots,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Update Google Calendar event if needed
+    if (schedule.eventIds?.[dayIndex]) {
+      await updateCalendarEvent(schedule.eventIds[dayIndex], {
+        startTime: updates.timeSlot.toISOString(),
+        endTime: new Date(updates.timeSlot.getTime() + schedule.duration * 60000).toISOString()
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating session:', error);
     throw error;
   }
 };

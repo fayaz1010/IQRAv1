@@ -23,7 +23,7 @@ import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../../config/firebase';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { createSchedule } from '../../../../services/scheduleService';
+import { createSchedule, updateSchedule } from '../../../../services/scheduleService';
 
 const steps = [
   'Select Class',
@@ -32,11 +32,11 @@ const steps = [
   'Review & Confirm'
 ];
 
-const SchedulingWizard = ({ onComplete }) => {
+const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
   const { currentUser } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
   const [classes, setClasses] = useState([]);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(initialData || {
     classId: '',
     startDate: new Date(),
     recurrencePattern: 'weekly',
@@ -45,6 +45,7 @@ const SchedulingWizard = ({ onComplete }) => {
     timeSlots: {}, // Map of day index to time slot
   });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchClasses();
@@ -126,17 +127,24 @@ const SchedulingWizard = ({ onComplete }) => {
         return;
       }
 
+      if (loading) return; // Prevent multiple submissions
+      setLoading(true);
       setError('');
       
-      // Create schedule without token
-      await createSchedule(formData);
+      if (isEditing) {
+        await updateSchedule(initialData.id, formData);
+      } else {
+        await createSchedule(formData);
+      }
       
       if (onComplete) {
         onComplete();
       }
     } catch (err) {
-      setError('Failed to create schedule: ' + err.message);
-      console.error('Error creating schedule:', err);
+      setError('Failed to ' + (isEditing ? 'update' : 'create') + ' schedule: ' + err.message);
+      console.error('Error ' + (isEditing ? 'updating' : 'creating') + ' schedule:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -265,7 +273,7 @@ const SchedulingWizard = ({ onComplete }) => {
     <Container maxWidth="md">
       <Paper sx={{ p: 3, mt: 3 }}>
         <Typography variant="h5" gutterBottom>
-          Schedule Class Sessions
+          {isEditing ? 'Edit Schedule' : 'Schedule Class Sessions'}
         </Typography>
         
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
@@ -295,9 +303,11 @@ const SchedulingWizard = ({ onComplete }) => {
           <Button
             variant="contained"
             onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
-            disabled={!validateStep(activeStep)}
+            disabled={!validateStep(activeStep) || loading}
           >
-            {activeStep === steps.length - 1 ? 'Schedule Sessions' : 'Next'}
+            {activeStep === steps.length - 1 
+              ? (loading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Schedule' : 'Schedule Sessions')) 
+              : 'Next'}
           </Button>
         </Box>
       </Paper>
