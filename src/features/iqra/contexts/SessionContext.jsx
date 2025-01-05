@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { db } from '../../../config/firebase';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { createGoogleMeet, deleteGoogleMeet } from '../../../config/googleMeet';
+import { createGoogleMeet } from '../../../config/googleMeet';
 
 export const SessionContext = createContext(null);
 
@@ -123,24 +123,14 @@ export function SessionProvider({ children }) {
       // Try to create Google Meet, but don't block session creation if it fails
       try {
         console.log('Creating Google Meet for session...');
-        const studentEmails = classData.students?.map(student => student.email) || [];
-        const meetTitle = `${classData.name} - Iqra Session`;
-        console.log('Meet details:', { meetTitle, studentEmails });
-        
-        const meetResponse = await createGoogleMeet(
-          meetTitle,
-          new Date().toISOString(),
-          60,
-          studentEmails,
-          currentUser.email // Pass teacher's email
-        );
-        console.log('Meet created successfully:', meetResponse);
+        const meetLink = await createMeetLink();
+        console.log('Meet created successfully:', meetLink);
         
         meetData = {
-          link: meetResponse.meetLink,
-          eventId: meetResponse.eventId,
-          startTime: meetResponse.startTime,
-          endTime: meetResponse.endTime
+          link: meetLink,
+          eventId: meetLink.eventId,
+          startTime: meetLink.startTime,
+          endTime: meetLink.endTime
         };
         console.log('Meet data prepared:', meetData);
       } catch (meetError) {
@@ -188,6 +178,26 @@ export function SessionProvider({ children }) {
       console.error('Error starting session:', error);
       setError(error.message);
       throw error;
+    }
+  };
+
+  const createMeetLink = async () => {
+    try {
+      const startTime = new Date().toISOString();
+      const endTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour from now
+      
+      console.log('Creating Google Meet for session...');
+      const meetData = await createGoogleMeet(
+        `Iqra Teaching Session - ${new Date().toLocaleDateString()}`,
+        startTime,
+        endTime
+      );
+      console.log('Meet created successfully:', meetData);
+      
+      return meetData;
+    } catch (error) {
+      console.error('Failed to create Google Meet - Full error:', error);
+      throw new Error('Unexpected error creating Meet: ' + error.message);
     }
   };
 
@@ -260,15 +270,7 @@ export function SessionProvider({ children }) {
       // Generate a readable session ID
       const sessionId = `${activeSession.book}-${new Date().toISOString().split('T')[0]}-${activeSession.id.slice(-6)}`;
       
-      // Try to delete Google Meet event if it exists
-      if (activeSession.meet?.eventId) {
-        try {
-          await deleteGoogleMeet(activeSession.meet.eventId);
-        } catch (meetError) {
-          console.error('Failed to delete Google Meet:', meetError);
-          // Continue with session end even if Meet deletion fails
-        }
-      }
+      // Note: Meet cleanup is now handled by Google Calendar's automatic cleanup
 
       // Update session with end time, status and feedback
       await updateDoc(sessionRef, {

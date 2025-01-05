@@ -221,6 +221,16 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Settings />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
 
         {/* Iqra routes */}
         <Route

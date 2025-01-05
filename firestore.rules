@@ -13,19 +13,19 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role == 'admin';
+        (getUserData().role == 'admin' || request.auth.token.role == 'admin');
     }
 
     function isTeacher() {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role == 'teacher';
+        (getUserData().role == 'teacher' || request.auth.token.role == 'teacher');
     }
 
     function isStudent() {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role == 'student';
+        (getUserData().role == 'student' || request.auth.token.role == 'student');
     }
 
     function isParent() {
@@ -72,21 +72,22 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated() && (
         request.auth.uid == userId ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role in ['admin', 'teacher'])
+        isAdmin() ||
+        isTeacher() ||
+        (isParent() && userId in getUserData().children)
       );
 
       allow create: if isAuthenticated() &&
         request.auth.uid == userId &&
-        request.resource.data.role in ['student', 'teacher'] &&
+        request.resource.data.role in ['student', 'teacher', 'parent'] &&
         (!request.resource.data.keys().hasAny(['isAdmin', 'customClaims']));
 
       allow update: if isAuthenticated() && (
         isAdmin() ||
         (request.auth.uid == userId &&
-        !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['role', 'isAdmin', 'customClaims']))
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin', 'customClaims']))
       );
+
       allow delete: if isAdmin();
     }
 
@@ -108,60 +109,65 @@ service cloud.firestore {
         (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
         (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is string);
 
-      // Teachers can read their own classes
-      // Students can read classes they're enrolled in
+      // Allow read access for teachers, admins, and enrolled students
       allow read: if isAuthenticated() && (
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (
-          getUserData().role in ['admin', 'teacher'] ||
-          (exists(resource) && request.auth.uid in (resource.data.studentIds || []))
-        )
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && resource.data.studentIds.hasAny([request.auth.uid]))
       );
 
       // Teachers can update their own classes
-      allow update: if isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (
-          getUserData().role == 'admin' ||
-          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
-        ) && 
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(classId)
+      ) && 
         request.resource.data.keys().hasAll(['name', 'teacherId']) &&
         request.resource.data.teacherId == resource.data.teacherId &&
         request.resource.data.name is string &&
         (!('description' in request.resource.data) || request.resource.data.description is string) &&
         (!('studentIds' in request.resource.data) || request.resource.data.studentIds == null || 
-          (request.resource.data.studentIds is list)) &&
+          (request.resource.data.studentIds is list && request.resource.data.studentIds.size() <= 100)) &&
         (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is string);
 
       // Teachers can delete their own classes
-      allow delete: if isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (
-          getUserData().role == 'admin' ||
-          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
-        );
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(classId)
+      );
 
       // Sessions subcollection
       match /sessions/{sessionId} {
         allow create: if isAuthenticated() && (
           isAdmin() ||
-          get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid
-        );
+          isTeacherOfClass(classId)
+        ) &&
+        request.resource.data.keys().hasAll(['startTime', 'status']) &&
+        request.resource.data.startTime is string &&
+        request.resource.data.status in ['active', 'completed', 'cancelled'] &&
+        (!('endTime' in request.resource.data) || request.resource.data.endTime is string) &&
+        (!('meetLink' in request.resource.data) || request.resource.data.meetLink is string) &&
+        (!('studentProgress' in request.resource.data) || request.resource.data.studentProgress is map);
 
         allow read: if isAuthenticated() && (
           isAdmin() ||
-          get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid ||
-          request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds
+          isTeacherOfClass(classId) ||
+          (isStudent() && exists(/databases/$(database)/documents/classes/$(classId)) &&
+           request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds)
         );
 
         allow update: if isAuthenticated() && (
           isAdmin() ||
-          get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid
+          isTeacherOfClass(classId) ||
+          (isStudent() && exists(/databases/$(database)/documents/classes/$(classId)) &&
+           request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress']) &&
+           request.resource.data.studentProgress is map &&
+           request.resource.data.studentProgress[request.auth.uid] is number)
         );
 
         allow delete: if isAuthenticated() && (
           isAdmin() ||
-          get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid
+          isTeacherOfClass(classId)
         );
       }
     }
@@ -300,8 +306,7 @@ service cloud.firestore {
 
     // Meet credentials collection
     match /meetCredentials/{userId} {
-      allow read: if isOwner(userId);
-      allow write: if isOwner(userId);
+      allow read, write: if isOwner(userId);
     }
 
     // Parent-Student relationships

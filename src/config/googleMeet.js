@@ -1,6 +1,6 @@
-import { getAuth } from 'firebase/auth';
+import { auth } from './firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { getMeetCredentials, storeMeetCredentials, areMeetCredentialsValid } from '../services/meetCredentialsService';
+import { getMeetCredentials, storeMeetCredentials } from '../services/meetCredentialsService';
 
 const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
 const CALENDAR_SCOPES = [
@@ -8,286 +8,131 @@ const CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events'
 ];
 
-// Function to get OAuth2 token with Calendar scope
-const getCalendarToken = async () => {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('User not authenticated');
-
-  // First try to get stored credentials
-  const storedCredentials = await getMeetCredentials(user.uid);
-  if (storedCredentials && areMeetCredentialsValid(storedCredentials)) {
-    console.log('Using stored credentials');
-    return storedCredentials.googleAccessToken;
-  }
-
-  console.log('No valid stored credentials, requesting new ones');
-  
-  // If no valid stored credentials, request new ones
-  const provider = new GoogleAuthProvider();
-  
-  // Add scopes before custom parameters
-  CALENDAR_SCOPES.forEach(scope => provider.addScope(scope));
-  
-  provider.setCustomParameters({
-    access_type: 'offline',
-    prompt: 'consent',
-    include_granted_scopes: 'true'
-  });
-  
+export const signInWithGoogle = async () => {
   try {
-    // Store current auth state
-    const currentUser = { ...auth.currentUser };
-    console.log('Current user before popup:', currentUser.email);
+    const provider = new GoogleAuthProvider();
+    CALENDAR_SCOPES.forEach(scope => {
+      console.log('Adding scope:', scope);
+      provider.addScope(scope);
+    });
     
+    provider.setCustomParameters({
+      access_type: 'offline',
+      prompt: 'consent'
+    });
+
+    console.log('Starting Google sign-in...');
     const result = await signInWithPopup(auth, provider);
-    console.log('Sign in result:', result.user.email);
-    
+    console.log('Sign-in successful for:', result.user.email);
+
     const credential = GoogleAuthProvider.credentialFromResult(result);
-    console.log('Got credential:', credential ? 'yes' : 'no');
-    
+    console.log('Credential obtained:', {
+      hasAccessToken: !!credential?.accessToken,
+      hasRefreshToken: !!credential?.refreshToken,
+      providerId: credential?.providerId
+    });
+
     if (!credential?.accessToken) {
-      console.error('No access token in credential');
-      throw new Error('No access token received');
+      throw new Error('No access token received from Google');
     }
-    
+
     // Store the credentials
     const credentialData = {
       googleAccessToken: credential.accessToken,
       googleRefreshToken: credential.refreshToken || null,
-      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(), // 1 hour
+      expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
       associatedEmail: result.user.email
     };
-    
-    console.log('Storing credentials:', { ...credentialData, googleAccessToken: '[REDACTED]' });
-    await storeMeetCredentials(currentUser.uid, credentialData);
 
-    // Always restore the original user
-    if (auth.currentUser.uid !== currentUser.uid) {
-      console.log('Restoring original user');
-      await auth.updateCurrentUser(currentUser);
-    }
+    console.log('Storing credentials...');
+    await storeMeetCredentials(result.user.uid, credentialData);
+    console.log('Credentials stored successfully');
 
-    return credential.accessToken;
+    return true;
   } catch (error) {
-    console.error('Error in getCalendarToken:', error);
-    // Make sure to restore original user even on error
-    if (auth.currentUser.uid !== user.uid) {
-      await auth.updateCurrentUser(user);
-    }
+    console.error('Error in signInWithGoogle:', error);
     throw error;
   }
 };
 
-// Function to create a Google Meet link
-export const createGoogleMeet = async (title, startTime, duration = 60, attendees = [], teacherEmail) => {
+export const getCalendarToken = async () => {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    console.log('Current user:', user.email);
+
+    // Try to get stored credentials
+    const storedCreds = await getMeetCredentials(user.uid);
+    console.log('Stored credentials:', storedCreds ? 'Found' : 'Not found');
+
+    if (storedCreds?.googleAccessToken) {
+      console.log('Using stored access token');
+      return storedCreds.googleAccessToken;
+    }
+
+    throw new Error('No valid Google credentials found. Please sign in with Google first.');
+  } catch (error) {
+    console.error('Error in getCalendarToken:', error);
+    throw error;
+  }
+};
+
+export const createGoogleMeet = async (title, startTime, endTime) => {
   try {
     console.log('Getting Calendar token...');
-    const token = await getCalendarToken();
-    console.log('Calendar token obtained:', token ? 'Token received' : 'No token');
+    const accessToken = await getCalendarToken();
+    console.log('Access token obtained');
 
     const event = {
       summary: title,
-      start: {
-        dateTime: startTime,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      end: {
-        dateTime: new Date(new Date(startTime).getTime() + duration * 60000).toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      attendees: [
-        // Teacher is host
-        { email: teacherEmail, organizer: true },
-        // Students are attendees with responseStatus accepted
-        ...attendees.map(email => ({ 
-          email, 
-          responseStatus: 'accepted' 
-        }))
-      ],
+      start: { dateTime: startTime },
+      end: { dateTime: endTime },
       conferenceData: {
-        createRequest: {
-          requestId: `${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          conferenceSolutionKey: { type: 'hangoutsMeet' },
-          // Configure Meet settings
-          conferenceDataVersion: 1,
+        createRequest: { 
+          requestId: Date.now().toString(),
+          conferenceSolutionKey: { type: 'hangoutsMeet' }
         }
-      },
-      // Give attendees permission to modify event
-      guestsCanModify: false,
-      // Allow guests to invite others
-      guestsCanInviteOthers: false,
-      // Allow guests to see guest list
-      guestsCanSeeOtherGuests: true,
-      // Automatically accept all attendees
-      anyoneCanAddSelf: false,
-      // Send updates to all attendees
-      sendUpdates: 'all'
+      }
     };
 
-    console.log('Creating Calendar event with Meet...');
+    console.log('Creating Calendar event:', event);
 
-    const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events?conferenceDataVersion=1&sendNotifications=true`;
-    console.log('Calendar API URL:', url);
+    const response = await fetch(
+      `${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events?conferenceDataVersion=1&sendNotifications=true`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(event)
+      }
+    );
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(event)
+    const responseData = await response.json();
+    console.log('Calendar API response:', {
+      status: response.status,
+      ok: response.ok,
+      data: responseData
     });
 
-    console.log('Calendar API response status:', response.status);
-    const responseText = await response.text();
-    console.log('Calendar API response text:', responseText);
-
     if (!response.ok) {
-      const error = JSON.parse(responseText);
-      console.error('Calendar API error:', error);
-      throw new Error(error.error?.message || 'Failed to create Google Meet');
+      console.error('Calendar API error details:', responseData);
+      throw new Error(responseData.error?.message || 'Failed to create Google Meet');
     }
 
-    const data = JSON.parse(responseText);
-    console.log('Calendar event created:', data);
-
-    if (!data.hangoutLink) {
-      console.error('No hangoutLink in response:', data);
-      throw new Error('Meet link not created');
-    }
+    const meetLink = responseData.conferenceData?.entryPoints?.[0]?.uri;
+    console.log('Meet link created:', meetLink);
 
     return {
-      meetLink: data.hangoutLink,
-      eventId: data.id,
-      startTime: data.start.dateTime,
-      endTime: data.end.dateTime
+      link: meetLink,
+      eventId: responseData.id,
+      startTime: responseData.start.dateTime,
+      endTime: responseData.end.dateTime
     };
   } catch (error) {
     console.error('Error in createGoogleMeet:', error);
-    throw error;
-  }
-};
-
-// Function to update a Google Meet event
-export const updateGoogleMeet = async (eventId, updates) => {
-  try {
-    console.log('Getting Calendar token...');
-    const token = await getCalendarToken();
-    console.log('Calendar token obtained:', token ? 'Token received' : 'No token');
-
-    const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events/${eventId}`;
-    console.log('Calendar API URL:', url);
-
-    const response = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(updates)
-    });
-
-    console.log('Calendar API response status:', response.status);
-    const responseText = await response.text();
-    console.log('Calendar API response text:', responseText);
-
-    if (!response.ok) {
-      const error = JSON.parse(responseText);
-      console.error('Calendar API error:', error);
-      throw new Error(error.error?.message || 'Failed to update Google Meet');
-    }
-
-    const data = JSON.parse(responseText);
-    console.log('Calendar event updated:', data);
-
-    return {
-      meetLink: data.hangoutLink,
-      eventId: data.id,
-      startTime: data.start.dateTime,
-      endTime: data.end.dateTime
-    };
-  } catch (error) {
-    console.error('Error in updateGoogleMeet:', error);
-    throw error;
-  }
-};
-
-// Function to delete a Google Meet event
-export const deleteGoogleMeet = async (eventId) => {
-  try {
-    console.log('Getting Calendar token...');
-    const token = await getCalendarToken();
-    console.log('Calendar token obtained:', token ? 'Token received' : 'No token');
-
-    const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events/${eventId}`;
-    console.log('Calendar API URL:', url);
-
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      }
-    });
-
-    console.log('Calendar API response status:', response.status);
-    const responseText = await response.text();
-    console.log('Calendar API response text:', responseText);
-
-    if (!response.ok && response.status !== 404) {
-      const error = JSON.parse(responseText);
-      console.error('Calendar API error:', error);
-      throw new Error(error.error?.message || 'Failed to delete Google Meet');
-    }
-
-    console.log('Calendar event deleted:', eventId);
-    return true;
-  } catch (error) {
-    console.error('Error in deleteGoogleMeet:', error);
-    throw error;
-  }
-};
-
-// Function to get Google Meet event details
-export const getGoogleMeetDetails = async (eventId) => {
-  try {
-    console.log('Getting Calendar token...');
-    const token = await getCalendarToken();
-    console.log('Calendar token obtained:', token ? 'Token received' : 'No token');
-
-    const url = `${GOOGLE_CALENDAR_API_BASE}/calendars/primary/events/${eventId}`;
-    console.log('Calendar API URL:', url);
-
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      }
-    });
-
-    console.log('Calendar API response status:', response.status);
-    const responseText = await response.text();
-    console.log('Calendar API response text:', responseText);
-
-    if (!response.ok) {
-      const error = JSON.parse(responseText);
-      console.error('Calendar API error:', error);
-      throw new Error(error.error?.message || 'Failed to get Google Meet details');
-    }
-
-    const data = JSON.parse(responseText);
-    console.log('Calendar event details:', data);
-
-    return {
-      meetLink: data.hangoutLink,
-      eventId: data.id,
-      startTime: data.start.dateTime,
-      endTime: data.end.dateTime,
-      attendees: data.attendees || [],
-      status: data.status
-    };
-  } catch (error) {
-    console.error('Error in getGoogleMeetDetails:', error);
     throw error;
   }
 };

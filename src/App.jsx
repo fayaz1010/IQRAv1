@@ -6,6 +6,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import getTheme from './theme/theme';
 import AppRoutes from './routes/AppRoutes';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Firebase configuration - needed for the entire app to work with Firebase
 const firebaseConfig = {
@@ -30,15 +31,17 @@ initializeApp(firebaseConfig);
 function App() {
   return (
     // Router wraps the entire app to enable navigation
-    <Router>
-      {/* AuthProvider makes authentication state available throughout the app */}
-      <AuthProvider>
-        {/* ThemeProvider enables theme customization */}
-        <ThemeProvider>
-          <AppContent />
-        </ThemeProvider>
-      </AuthProvider>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        {/* AuthProvider makes authentication state available throughout the app */}
+        <AuthProvider>
+          {/* ThemeProvider enables theme customization */}
+          <ThemeProvider>
+            <AppContent />
+          </ThemeProvider>
+        </AuthProvider>
+      </Router>
+    </ErrorBoundary>
   );
 }
 

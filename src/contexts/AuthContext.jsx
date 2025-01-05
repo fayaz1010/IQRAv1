@@ -24,49 +24,53 @@ export function AuthProvider({ children }) {
   const functions = getFunctions();
 
   useEffect(() => {
+    let mounted = true;
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        try {
+      try {
+        if (user && mounted) {
+          console.log('Auth state changed - user found:', user.uid);
           // Get user data from Firestore
           const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
+          if (userDoc.exists() && mounted) {
             const userData = userDoc.data();
+            console.log('User data found:', userData.role);
             
             // Get the user's ID token result to check custom claims
             const tokenResult = await getIdTokenResult(user, true);
             const role = tokenResult.claims.role || userData.role || 'student';
             
-            // If the role in token doesn't match Firestore, update custom claims
-            if (role !== userData.role) {
-              const setUserRole = httpsCallable(functions, 'setUserRole');
-              await setUserRole({ userId: user.uid, role: userData.role });
-              // Force token refresh
-              await user.getIdToken(true);
+            if (mounted) {
+              setCurrentUser({ 
+                ...user, 
+                ...userData,
+                role: userData.role || 'student'
+              });
             }
-
-            setCurrentUser({ 
-              ...user, 
-              ...userData,
-              role: userData.role || 'student'
-            });
-          } else {
-            setCurrentUser({
-              ...user,
-              role: 'student'
-            });
+          } else if (mounted) {
+            console.warn('No user document found for:', user.uid);
+            setCurrentUser({ ...user, role: 'student' });
           }
-        } catch (error) {
-          console.error('Error setting up user:', error);
+        } else if (mounted) {
+          console.log('No user found in auth state change');
           setCurrentUser(null);
         }
-      } else {
-        setCurrentUser(null);
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        if (mounted) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
 
-    return unsubscribe;
-  }, [functions]);
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   async function signup(email, password, role = 'student') {
     try {
@@ -215,6 +219,7 @@ export function AuthProvider({ children }) {
 
   const value = {
     currentUser,
+    loading,
     signup,
     login,
     logout,

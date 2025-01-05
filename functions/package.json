@@ -15,7 +15,8 @@
   "dependencies": {
     "firebase-admin": "^11.11.1",
     "firebase-functions": "^4.5.0",
-    "firebase-tools": "^13.0.2"
+    "firebase-tools": "^13.0.2",
+    "googleapis": "^144.0.0"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"

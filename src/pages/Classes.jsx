@@ -80,15 +80,32 @@ const Classes = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchClasses();
-    fetchCourses();
-    fetchStudents();
+    if (currentUser?.uid) {
+      fetchClasses();
+      fetchCourses();
+      fetchStudents();
+    }
   }, [currentUser]);
 
   const fetchClasses = async () => {
+    if (!currentUser?.uid) return;
+    
     try {
       const classesRef = collection(db, 'classes');
-      const q = query(classesRef, where('teacherId', '==', currentUser.uid));
+      let q;
+      
+      // Different queries for teachers and students
+      if (currentUser.role === 'teacher') {
+        q = query(classesRef, where('teacherId', '==', currentUser.uid));
+      } else if (currentUser.role === 'student') {
+        q = query(classesRef, where('studentIds', 'array-contains', currentUser.uid));
+      } else if (currentUser.role === 'admin') {
+        q = query(classesRef);
+      } else {
+        setClasses([]);
+        return;
+      }
+      
       const querySnapshot = await getDocs(q);
       const fetchedClasses = [];
       querySnapshot.forEach((doc) => {
@@ -117,24 +134,28 @@ const Classes = () => {
   };
 
   const fetchStudents = async () => {
+    if (!currentUser?.uid) return;
+
     try {
+      // Only fetch students if user is a teacher or admin
+      if (!['teacher', 'admin'].includes(currentUser.role)) {
+        setStudents([]);
+        return;
+      }
+
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('role', '==', 'student'));
       const querySnapshot = await getDocs(q);
-      const fetchedStudents = querySnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          email: doc.data().email,
-          displayName: doc.data().displayName || doc.data().email,
-          photoURL: doc.data().photoURL,
-          phoneNumber: doc.data().phoneNumber,
-          address: doc.data().address,
-          bio: doc.data().bio
-        }));
+      const fetchedStudents = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        email: doc.data().email,
+        displayName: doc.data().displayName || doc.data().email,
+        photoURL: doc.data().photoURL
+      }));
       setStudents(fetchedStudents);
     } catch (error) {
       console.error('Error fetching students:', error);
-      setError('Failed to load students. Please try refreshing the page.');
+      setError('Failed to load students');
     }
   };
 

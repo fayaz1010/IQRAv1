@@ -96,6 +96,11 @@ const menuItems = {
       icon: <PersonIcon />, 
       path: '/profile' 
     },
+    { 
+      title: 'Settings', 
+      icon: <SettingsIcon />, 
+      path: '/settings' 
+    },
   ],
   admin: [
     { title: 'Dashboard', icon: <DashboardIcon />, path: '/admin' },
