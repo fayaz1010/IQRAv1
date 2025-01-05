@@ -74,6 +74,7 @@ service cloud.firestore {
         request.auth.uid == userId ||
         isAdmin() ||
         isTeacher() ||
+        isStudent() ||  
         (isParent() && userId in getUserData().children)
       );
 
@@ -134,6 +135,39 @@ service cloud.firestore {
         isAdmin() ||
         isTeacherOfClass(classId)
       );
+
+      // Progress subcollection
+      match /progress/{userId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId) ||
+          isOwner(userId)
+        );
+        
+        allow create, update: if isAuthenticated() && (
+          isTeacherOfClass(classId) ||
+          isOwner(userId)
+        );
+      }
+
+      // Recordings subcollection
+      match /recordings/{recordingId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId) ||
+          isStudentInClass(classId)
+        );
+        
+        allow create: if isAuthenticated() && 
+          isStudentInClass(classId) &&
+          request.resource.data.studentId == request.auth.uid &&
+          request.resource.data.size <= 5 * 1024 * 1024;  // 5MB limit
+        
+        allow delete: if isAuthenticated() && (
+          isTeacherOfClass(classId) ||
+          (isStudentInClass(classId) && resource.data.studentId == request.auth.uid)
+        );
+      }
 
       // Sessions subcollection
       match /sessions/{sessionId} {

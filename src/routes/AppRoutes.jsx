@@ -12,6 +12,7 @@ const Register = React.lazy(() => import('../pages/auth/Register'));
 const Profile = React.lazy(() => import('../pages/Profile'));
 const Schedule = React.lazy(() => import('../pages/Schedule'));
 const Learn = React.lazy(() => import('../pages/Learn'));
+const Practice = React.lazy(() => import('../pages/Practice'));
 const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
 const ManageUsers = React.lazy(() => import('../pages/admin/ManageUsers'));
 const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
@@ -111,6 +112,16 @@ const AppRoutes = () => {
             <ProtectedRoute allowedRoles={['student']}>
               <Suspense fallback={<LoadingScreen />}>
                 <Dashboard />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/practice"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Practice />
               </Suspense>
             </ProtectedRoute>
           }

@@ -156,17 +156,25 @@ const IqraBookViewer = ({
       setLoading(true);
       setError(null);
       
+      console.log('Loading book data for:', bookId);
+      
       // Convert book ID to storage path format
       // e.g., "Iqra Book 1" -> "iqra-1"
       const bookFolder = bookId.toLowerCase()
         .replace(/iqra book (\d+)/i, 'iqra-$1')
         .replace(/\s+/g, '-');
       
+      console.log('Book folder path:', bookFolder);
+      
       const storage = getStorage();
       const bookRef = ref(storage, `iqra-books/${bookFolder}/pages`);
       
+      console.log('Listing pages from:', bookRef.fullPath);
+      
       // List all pages in the book directory
       const result = await listAll(bookRef);
+      console.log('Found pages:', result.items.length);
+      
       const pages = result.items.sort((a, b) => {
         // Extract page numbers from "page_X.png" format
         const pageA = parseInt(a.name.match(/page_(\d+)/i)?.[1] || '0');
@@ -178,6 +186,7 @@ const IqraBookViewer = ({
         throw new Error(`No pages found in book: ${bookFolder}`);
       }
       
+      console.log('Total pages found:', pages.length);
       setTotalPages(pages.length);
 
       // Load URLs for current page and adjacent pages
@@ -187,6 +196,8 @@ const IqraBookViewer = ({
         currentPage + 1
       ].filter(p => p > 0 && p <= pages.length));
 
+      console.log('Loading pages:', [...pagesToLoad]);
+      
       const urls = {};
       await Promise.all([...pagesToLoad].map(async (pageNum) => {
         const pageFile = pages.find(p => {
@@ -198,21 +209,20 @@ const IqraBookViewer = ({
           try {
             const url = await getDownloadURL(pageFile);
             urls[pageNum] = url;
+            console.log('Loaded URL for page', pageNum);
           } catch (error) {
-            console.error(`Error loading page ${pageNum}:`, error);
+            console.error('Error loading page', pageNum, error);
+            setError('Failed to load page ' + pageNum);
           }
         }
       }));
       
-      if (Object.keys(urls).length === 0) {
-        throw new Error('Failed to load any pages');
-      }
-      
+      console.log('Loaded URLs:', Object.keys(urls));
       setPageUrls(urls);
-    } catch (error) {
-      console.error('Error loading book:', error);
-      setError(error.message || 'Failed to load book');
-    } finally {
+      setLoading(false);
+    } catch (err) {
+      console.error('Error in loadBookData:', err);
+      setError(err.message || 'Failed to load book data');
       setLoading(false);
     }
   };
