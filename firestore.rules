@@ -268,11 +268,26 @@ service cloud.firestore {
 
     // Courses collection
     match /courses/{courseId} {
+      // Allow read access for all authenticated users
       allow read: if isAuthenticated();
-      allow create: if (isTeacher() || isAdmin()) &&
+      
+      // Only teachers and admins can create courses
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role in ['teacher', 'admin'] &&
         request.resource.data.teacherId == request.auth.uid;
-      allow update: if (isTeacher() && resource.data.teacherId == request.auth.uid) || isAdmin();
-      allow delete: if isAdmin();
+      
+      // Teachers can update their own courses, admins can update any course
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      );
+      
+      // Only admins and course owners can delete courses
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      );
     }
 
     // Student progress collection

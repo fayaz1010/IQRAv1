@@ -121,12 +121,22 @@ const Classes = () => {
   const fetchCourses = async () => {
     try {
       const coursesRef = collection(db, 'courses');
-      const q = query(coursesRef, where('teacherId', '==', currentUser.uid));
+      let q;
+      
+      // For teachers, only show their courses
+      if (currentUser.role === 'teacher') {
+        q = query(coursesRef, where('teacherId', '==', currentUser.uid));
+      } else {
+        // For students and admins, show all courses
+        q = query(coursesRef);
+      }
+      
       const querySnapshot = await getDocs(q);
       const fetchedCourses = [];
       querySnapshot.forEach((doc) => {
         fetchedCourses.push({ id: doc.id, ...doc.data() });
       });
+      console.log('Fetched courses:', fetchedCourses);
       setCourses(fetchedCourses);
     } catch (error) {
       console.error('Error fetching courses:', error);
@@ -436,13 +446,15 @@ const Classes = () => {
             >
               Session History
             </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => handleOpenDialog()}
-            >
-              Add Class
-            </Button>
+            {(currentUser.role === 'teacher' || currentUser.role === 'admin') && (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => handleOpenDialog()}
+              >
+                Add Class
+              </Button>
+            )}
           </Stack>
         </Stack>
 
@@ -471,19 +483,23 @@ const Classes = () => {
                       >
                         View History
                       </Button>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleOpenDialog(class_)}
-                        sx={{ mr: 1 }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDelete(class_.id)}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
+                      {(currentUser.role === 'teacher' || currentUser.role === 'admin') && (
+                        <>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog(class_)}
+                            sx={{ mr: 1 }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDelete(class_.id)}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </>
+                      )}
                     </Box>
                   </Box>
                   <Typography color="textSecondary" gutterBottom>
