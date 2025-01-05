@@ -18,6 +18,10 @@ import {
   Select,
   MenuItem,
   TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   PlayArrow,
@@ -33,10 +37,11 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { SessionProvider } from '../features/iqra/contexts/SessionContext';
 import { db, storage } from '../config/firebase';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import DrawingCanvas from '../features/iqra/components/DrawingCanvas';
 import IqraBookViewer from '../features/iqra/components/IqraBookViewer';
+import IqraBookService from '../features/iqra/services/IqraBookService';
 
 const MAX_RECORDING_SIZE = 5 * 1024 * 1024; // 5MB limit per recording
 const MAX_RECORDINGS_PER_LESSON = 3; // Maximum 3 recordings per lesson
@@ -45,7 +50,7 @@ const Practice = () => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [enrolledClasses, setEnrolledClasses] = useState([]);
+  const [availableCourses, setAvailableCourses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isRecording, setIsRecording] = useState(false);
@@ -59,133 +64,160 @@ const Practice = () => {
   const [teacherData, setTeacherData] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showRecordings, setShowRecordings] = useState(false);
+  const [showCourseDialog, setShowCourseDialog] = useState(true);
   const bookViewerRef = React.useRef(null);
 
   useEffect(() => {
-    loadEnrolledClasses();
+    if (currentUser) {
+      loadEnrolledCoursesAndClasses();
+    }
   }, [currentUser]);
 
-  useEffect(() => {
-    const loadBooks = async () => {
-      if (selectedClass?.course?.id) {
-        try {
-          // Get course data
-          const courseRef = doc(db, 'courses', selectedClass.course.id);
-          const courseDoc = await getDoc(courseRef);
-          
-          if (courseDoc.exists()) {
-            const courseData = courseDoc.data();
-            if (courseData.books && courseData.books.length > 0) {
-              setCourseBooks(courseData.books);
-              // Set the first book as selected if none is selected
-              if (!selectedBook) {
-                setSelectedBook(courseData.books[0]);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Error loading books:', err);
-          setError('Failed to load books');
-        }
-      }
-    };
-
-    loadBooks();
-  }, [selectedClass]);
-
-  useEffect(() => {
-    const loadTeacherData = async () => {
-      if (selectedClass?.teacherId) {
-        try {
-          const teacherRef = doc(db, 'users', selectedClass.teacherId);
-          const teacherDoc = await getDoc(teacherRef);
-          if (teacherDoc.exists()) {
-            setTeacherData(teacherDoc.data());
-          }
-        } catch (err) {
-          console.error('Error loading teacher data:', err);
-        }
-      }
-    };
-    loadTeacherData();
-  }, [selectedClass]);
-
-  const loadEnrolledClasses = async () => {
+  const loadEnrolledCoursesAndClasses = async () => {
     try {
+      // First get all classes the student is enrolled in
       const classesRef = collection(db, 'classes');
       const q = query(classesRef, where('studentIds', 'array-contains', currentUser.uid));
       const querySnapshot = await getDocs(q);
       
+      console.log('Found classes:', querySnapshot.size);
+      
       const classes = [];
+      const coursesMap = new Map(); // Use map to avoid duplicate courses
+      
       for (const classDoc of querySnapshot.docs) {
-        const classData = classDoc.data();
-        const progressRef = doc(db, 'classes', classDoc.id, 'progress', currentUser.uid);
-        const progressDoc = await getDoc(progressRef);
+        const classData = { id: classDoc.id, ...classDoc.data() };
+        console.log('Class data:', classData);
         
+        if (!classData.courseId) {
+          console.log('No courseId for class:', classData.id);
+          continue;
+        }
+
         // Fetch course data
         const courseRef = doc(db, 'courses', classData.courseId);
         const courseDoc = await getDoc(courseRef);
-        const courseData = courseDoc.exists() ? courseDoc.data() : null;
+        console.log('Course exists:', courseDoc.exists(), 'for courseId:', classData.courseId);
         
-        classes.push({
-          id: classDoc.id,
-          ...classData,
-          course: courseData,
-          progress: progressDoc.exists() ? progressDoc.data() : { currentPage: 1, completed: false }
-        });
+        if (courseDoc.exists()) {
+          const courseData = { id: courseDoc.id, ...courseDoc.data() };
+          console.log('Course data:', courseData);
+          console.log('Iqra Books:', courseData.iqraBooks);
+          
+          // Convert iqraBooks array to books array with proper structure
+          const books = await Promise.all((courseData.iqraBooks || []).map(async (bookName) => {
+            // Convert "Iqra Book 1" to "iqra-1" format for storage
+            const bookId = bookName.toLowerCase().replace(/\s+book\s+/i, '-');
+            
+            // Check if book metadata exists in Firestore
+            const bookRef = doc(db, 'iqra-books', bookId);
+            const bookDoc = await getDoc(bookRef);
+            
+            if (!bookDoc.exists()) {
+              // Initialize book metadata in Firestore
+              await setDoc(bookRef, {
+                id: bookId,
+                name: bookName,
+                totalPages: 30,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+              });
+            }
+            
+            return {
+              id: bookId,
+              name: bookName,
+              totalPages: 30
+            };
+          }));
+          
+          coursesMap.set(classData.courseId, {
+            ...courseData,
+            books,
+            classes: [...(coursesMap.get(classData.courseId)?.classes || []), classData]
+          });
+        } else {
+          console.log('Course not found for ID:', classData.courseId);
+        }
       }
       
-      setEnrolledClasses(classes);
-      if (classes.length > 0) {
-        handleSelectClass(classes[0]);
-      }
+      const courses = Array.from(coursesMap.values());
+      console.log('Final courses with books:', courses.map(c => ({ id: c.id, name: c.name, books: c.books })));
+      setAvailableCourses(courses);
       setLoading(false);
     } catch (err) {
-      console.error('Error loading classes:', err);
-      setError('Failed to load your classes. Please try again.');
+      console.error('Error loading courses:', err);
+      setError('Failed to load your courses. Please try again.');
       setLoading(false);
     }
   };
 
-  const handleSelectClass = async (classData) => {
-    setSelectedClass(classData);
-    setCurrentPage(classData.progress?.currentPage || 1);
-    setCourseData(classData.course);
-
+  const handleSelectCourse = async (course) => {
     try {
-      // Load teacher data
-      const teacherRef = doc(db, 'users', classData.teacherId);
-      const teacherDoc = await getDoc(teacherRef);
-      if (teacherDoc.exists()) {
-        setTeacherData(teacherDoc.data());
-      }
+      console.log('Selected course:', course);
+      setCourseData(course);
+      setShowCourseDialog(false);
+      
+      // Select the first class from this course
+      if (course.classes && course.classes.length > 0) {
+        const classData = course.classes[0];
+        console.log('Selected class:', classData);
+        setSelectedClass(classData);
+        setCurrentPage(1);
 
-      // Initialize session context
-      const classRef = doc(db, 'classes', classData.id);
-      const classDoc = await getDoc(classRef);
-      const classDetails = classDoc.data();
-      
-      // Load existing recordings
-      const recordingsRef = collection(db, 'classes', classData.id, 'recordings');
-      const q = query(recordingsRef, where('studentId', '==', currentUser.uid));
-      const snapshot = await getDocs(q);
-      
-      const recordingsMap = {};
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (!recordingsMap[data.page]) {
-          recordingsMap[data.page] = [];
+        // Load teacher data
+        const teacherRef = doc(db, 'users', classData.teacherId);
+        const teacherDoc = await getDoc(teacherRef);
+        if (teacherDoc.exists()) {
+          const teacherData = teacherDoc.data();
+          console.log('Teacher data:', teacherData);
+          setTeacherData(teacherDoc.data());
         }
-        recordingsMap[data.page].push({
-          id: doc.id,
-          ...data
+
+        // Set course books
+        if (course.books && course.books.length > 0) {
+          console.log('Course books:', course.books);
+          setCourseBooks(course.books);
+          const firstBook = course.books[0];
+          setSelectedBook(firstBook);
+          
+          // Update progress in Firestore
+          const progressRef = doc(db, 'classes', classData.id, 'progress', currentUser.uid);
+          await setDoc(progressRef, {
+            currentBook: firstBook.id,
+            currentPage: 1,
+            lastUpdated: new Date(),
+            studentId: currentUser.uid
+          }, { merge: true });
+        } else {
+          console.log('No books found in course');
+          setError('No books available in this course');
+        }
+
+        // Load recordings
+        const recordingsRef = collection(db, 'classes', classData.id, 'recordings');
+        const q = query(recordingsRef, where('studentId', '==', currentUser.uid));
+        const snapshot = await getDocs(q);
+        
+        const recordingsMap = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (!recordingsMap[data.page]) {
+            recordingsMap[data.page] = [];
+          }
+          recordingsMap[data.page].push({
+            id: doc.id,
+            ...data
+          });
         });
-      });
-      
-      setRecordings(recordingsMap);
+        
+        setRecordings(recordingsMap);
+      } else {
+        console.log('No classes found in course:', course);
+      }
     } catch (err) {
-      console.error('Error loading data:', err);
-      setError('Failed to load class data');
+      console.error('Error selecting course:', err);
+      setError('Failed to load course data');
     }
   };
 
@@ -228,7 +260,7 @@ const Practice = () => {
           });
 
           // Refresh recordings
-          handleSelectClass(selectedClass);
+          handleSelectCourse(courseData);
         } catch (err) {
           console.error('Error saving recording:', err);
           setError('Failed to save recording');
@@ -417,201 +449,405 @@ const Practice = () => {
   }
 
   return (
-    <SessionProvider initialSession={selectedClass ? {
-      id: `practice_${selectedClass.id}`,
-      classId: selectedClass.id,
-      currentPage: currentPage,
-      studentProgress: {
-        [currentUser.uid]: {
+    <>
+      {/* Course Selection Dialog */}
+      <Dialog 
+        open={showCourseDialog} 
+        maxWidth="sm" 
+        fullWidth
+        onClose={() => {
+          if (courseData) {
+            setShowCourseDialog(false);
+          }
+        }}
+      >
+        <DialogTitle>Select a Course to Practice</DialogTitle>
+        <DialogContent>
+          {availableCourses.length === 0 ? (
+            <Alert severity="info">
+              You are not enrolled in any courses. Please enroll in a course to start practicing.
+            </Alert>
+          ) : (
+            <List>
+              {availableCourses.map((course) => (
+                <ListItem 
+                  key={course.id}
+                  component="div"
+                  onClick={() => handleSelectCourse(course)}
+                  selected={courseData?.id === course.id}
+                  sx={{ 
+                    cursor: 'pointer',
+                    '&:hover': {
+                      backgroundColor: 'action.hover'
+                    }
+                  }}
+                >
+                  <ListItemText
+                    primary={course.title || 'Unnamed Course'}
+                    secondary={`${course.books ? `${course.books.length} book(s)` : 'No books'} available`}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            if (!courseData && availableCourses.length > 0) {
+              handleSelectCourse(availableCourses[0]);
+            }
+          }}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Main Practice Area */}
+      {selectedClass && (
+        <SessionProvider initialSession={{
+          id: `practice_${selectedClass.id}`,
+          classId: selectedClass.id,
           currentPage: currentPage,
-          drawings: selectedClass.progress?.drawings || {}
-        }
-      },
-      teacherId: selectedClass.teacherId,
-      type: 'practice',
-      startTime: new Date().toISOString(),
-      status: 'active'
-    } : null}>
-      <Container maxWidth="lg" sx={{ py: { xs: 2, md: 4 } }}>
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-        
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
-            <Paper sx={{ p: 2, mb: 2 }}>
-              <Box display="flex" flexDirection={{ xs: 'column', md: 'row' }} gap={2}>
-                {/* Course and Teacher Info */}
-                <Box flex={1}>
-                  <Typography variant="h6" component="div">
-                    {selectedClass?.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {selectedClass?.course?.name || 'Loading course...'} • Teacher: {teacherData?.displayName || 'Loading...'}
-                  </Typography>
-                </Box>
-
-                {/* Book Selection and Navigation */}
-                <Box display="flex" flexWrap="wrap" gap={2} alignItems="center">
-                  <BookSelector />
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <Tooltip title="Previous Page">
-                      <IconButton
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage <= 1}
-                      >
-                        <NavigateBefore />
-                      </IconButton>
-                    </Tooltip>
-                    
-                    <Box sx={{ width: { xs: 60, sm: 80 } }}>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={currentPage}
-                        onChange={(e) => {
-                          const newPage = parseInt(e.target.value);
-                          if (!isNaN(newPage)) {
-                            handlePageChange(newPage);
-                          }
-                        }}
-                        inputProps={{ 
-                          min: 1, 
-                          max: selectedBook?.totalPages || courseData?.totalPages || 1,
-                          style: { textAlign: 'center' }
-                        }}
-                        sx={{ width: '100%' }}
-                      />
-                    </Box>
-                    
-                    <Typography variant="body2" sx={{ minWidth: 30 }}>
-                      / {selectedBook?.totalPages || courseData?.totalPages || 1}
+          studentProgress: {
+            [currentUser.uid]: {
+              currentPage: currentPage,
+              currentBook: selectedBook?.id,
+              drawings: selectedClass.progress?.drawings || {}
+            }
+          },
+          teacherId: selectedClass.teacherId,
+          type: 'practice',
+          startTime: new Date().toISOString(),
+          status: 'active'
+        }}>
+          <Container 
+            maxWidth={false} 
+            disableGutters 
+            sx={{ 
+              height: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              p: 2
+            }}
+          >
+            {loading ? (
+              <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                <CircularProgress />
+              </Box>
+            ) : error ? (
+              <Alert severity="error">{error}</Alert>
+            ) : (
+              <>
+                {/* Top Bar */}
+                <Paper 
+                  elevation={2}
+                  sx={{ 
+                    p: 2, 
+                    mb: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Typography variant="h6" component="div">
+                      {courseData?.title || 'Select a Course'}
                     </Typography>
-
-                    <Tooltip title="Next Page">
-                      <IconButton
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage >= (selectedBook?.totalPages || courseData?.totalPages || 1)}
-                      >
-                        <NavigateNext />
-                      </IconButton>
-                    </Tooltip>
+                    {teacherData && (
+                      <Typography variant="subtitle1" color="text.secondary">
+                        Teacher: {teacherData.displayName}
+                      </Typography>
+                    )}
                   </Box>
-
-                  {/* Control Buttons */}
-                  <Box display="flex" gap={1}>
-                    <Tooltip title="Show Recordings">
-                      <IconButton
-                        color={showRecordings ? 'primary' : 'default'}
-                        onClick={() => setShowRecordings(!showRecordings)}
-                      >
-                        <Headphones />
-                      </IconButton>
-                    </Tooltip>
-
-                    <span>
-                      <Tooltip title={isRecording ? 'Stop Recording' : 'Start Recording'}>
-                        <IconButton
-                          color={isRecording ? 'error' : 'primary'}
-                          onClick={isRecording ? stopRecording : startRecording}
+                  
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {selectedBook && (
+                      <>
+                        <Select
+                          value={selectedBook.id}
+                          onChange={(e) => {
+                            const book = courseBooks.find(b => b.id === e.target.value);
+                            handleBookChange(book);
+                          }}
+                          size="small"
+                          sx={{ minWidth: 200 }}
                         >
-                          {isRecording ? <StopIcon /> : <MicIcon />}
+                          {courseBooks.map((book) => (
+                            <MenuItem key={book.id} value={book.id}>
+                              {book.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Tooltip title="Previous Page">
+                            <IconButton
+                              onClick={() => handlePageChange(currentPage - 1)}
+                              disabled={currentPage <= 1}
+                            >
+                              <NavigateBefore />
+                            </IconButton>
+                          </Tooltip>
+                          
+                          <Box sx={{ width: { xs: 60, sm: 80 } }}>
+                            <TextField
+                              size="small"
+                              type="number"
+                              value={currentPage}
+                              onChange={(e) => {
+                                const newPage = parseInt(e.target.value);
+                                if (!isNaN(newPage)) {
+                                  handlePageChange(newPage);
+                                }
+                              }}
+                              inputProps={{ 
+                                min: 1, 
+                                max: selectedBook?.totalPages || 30,
+                                style: { textAlign: 'center' }
+                              }}
+                              sx={{ width: '100%' }}
+                            />
+                          </Box>
+                          
+                          <Typography variant="body2" sx={{ minWidth: 30 }}>
+                            / {selectedBook?.totalPages || 30}
+                          </Typography>
+
+                          <Tooltip title="Next Page">
+                            <IconButton
+                              onClick={() => handlePageChange(currentPage + 1)}
+                              disabled={currentPage >= (selectedBook?.totalPages || 30)}
+                            >
+                              <NavigateNext />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      </>
+                    )}
+                    
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Tooltip title="Toggle Recordings Panel">
+                        <IconButton onClick={() => setShowRecordings(!showRecordings)}>
+                          <Headphones />
                         </IconButton>
                       </Tooltip>
-                    </span>
+                      
+                      <span>
+                        <Tooltip title={isRecording ? 'Stop Recording' : 'Start Recording'}>
+                          <IconButton
+                            color={isRecording ? 'error' : 'primary'}
+                            onClick={isRecording ? stopRecording : startRecording}
+                          >
+                            {isRecording ? <StopIcon /> : <MicIcon />}
+                          </IconButton>
+                        </Tooltip>
+                      </span>
 
-                    <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
-                      <IconButton onClick={toggleFullscreen}>
-                        {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-                      </IconButton>
-                    </Tooltip>
-                  </Box>
-                </Box>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid container item spacing={2} xs={12} md={showRecordings ? 8 : 12}>
-            <Grid item xs={12} md={6}>
-              <Box ref={bookViewerRef} sx={{ height: '70vh' }}>
-                <Paper sx={{ p: 2, height: '100%' }}>
-                  {courseData ? (
-                    <IqraBookViewer
-                      bookId={selectedBook?.id || courseData.bookId || 'Iqra Book 1'}
-                      initialPage={currentPage}
-                      onPageChange={handlePageChange}
-                      totalPages={selectedBook?.totalPages || courseData.totalPages || 1}
-                      studentId={currentUser.uid}
-                      readOnly={false}
-                      showSaveButton={true}
-                    />
-                  ) : (
-                    <Box display="flex" justifyContent="center" alignItems="center" height="100%">
-                      <Typography color="text.secondary">
-                        No book content available
-                      </Typography>
+                      <Tooltip title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}>
+                        <IconButton onClick={toggleFullscreen}>
+                          {isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+                        </IconButton>
+                      </Tooltip>
                     </Box>
-                  )}
-                </Paper>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2, height: '70vh' }}>
-                <DrawingCanvas
-                  width={500}
-                  height={500}
-                  onSave={handleSaveDrawing}
-                  savedDrawing={selectedClass?.progress?.drawings?.[currentPage]}
-                />
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Recordings Panel */}
-          {showRecordings && (
-            <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 2, height: '70vh', overflow: 'auto' }}>
-                <Typography variant="h6" gutterBottom>
-                  Recordings
-                </Typography>
-                {Object.entries(recordings).map(([page, pageRecordings]) => (
-                  <Box key={page} sx={{ mb: 2 }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      Page {page}
-                    </Typography>
-                    <List dense>
-                      {pageRecordings.map((recording, index) => (
-                        <ListItem
-                          key={recording.id}
-                          secondaryAction={
-                            <IconButton edge="end" onClick={() => handlePlayRecording(recording)}>
-                              <PlayArrow />
-                            </IconButton>
-                          }
-                        >
-                          <ListItemText
-                            primary={`Recording ${index + 1}`}
-                            secondary={new Date(recording.timestamp).toLocaleString()}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
                   </Box>
-                ))}
-                {Object.keys(recordings).length === 0 && (
-                  <Typography color="text.secondary" align="center">
-                    No recordings yet
-                  </Typography>
-                )}
-              </Paper>
-            </Grid>
-          )}
-        </Grid>
-      </Container>
-    </SessionProvider>
+                </Paper>
+
+                {/* Main Content Area */}
+                <Box sx={{ 
+                  flexGrow: 1,
+                  minHeight: 0,
+                  display: 'flex',
+                  overflow: 'hidden'
+                }}>
+                  <Grid 
+                    container 
+                    spacing={2} 
+                    sx={{ 
+                      flexGrow: 1,
+                      margin: 0,
+                      width: '100%'
+                    }}
+                  >
+                    {/* Book Viewer and Drawing Canvas Container */}
+                    <Grid 
+                      item 
+                      xs={12} 
+                      md={showRecordings ? 8 : 12} 
+                      sx={{ 
+                        height: '100%',
+                        paddingTop: '0 !important',
+                        paddingLeft: '0 !important'
+                      }}
+                    >
+                      <Grid 
+                        container 
+                        spacing={2} 
+                        sx={{ 
+                          height: '100%',
+                          margin: 0,
+                          width: '100%'
+                        }}
+                      >
+                        {/* Book Viewer */}
+                        <Grid 
+                          item 
+                          xs={12} 
+                          md={6} 
+                          sx={{ 
+                            height: '100%',
+                            paddingTop: '0 !important',
+                            pl: { xs: '0 !important', md: 2 }
+                          }}
+                        >
+                          <Paper 
+                            elevation={3}
+                            sx={{ 
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <Box 
+                              ref={bookViewerRef} 
+                              sx={{ 
+                                flexGrow: 1,
+                                minHeight: 0,
+                                p: 2
+                              }}
+                            >
+                              {courseData && selectedBook ? (
+                                <IqraBookViewer
+                                  bookId={selectedBook.id}
+                                  initialPage={currentPage}
+                                  onPageChange={handlePageChange}
+                                  totalPages={selectedBook.totalPages}
+                                  studentId={currentUser.uid}
+                                  readOnly={false}
+                                  showSaveButton={true}
+                                />
+                              ) : (
+                                <Box display="flex" justifyContent="center" alignItems="center" height="100%">
+                                  <Typography color="text.secondary">
+                                    {courseBooks.length === 0 ? 'No books available in this course' : 'Please select a book'}
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Box>
+                          </Paper>
+                        </Grid>
+
+                        {/* Drawing Canvas */}
+                        <Grid 
+                          item 
+                          xs={12} 
+                          md={6} 
+                          sx={{ 
+                            height: '100%',
+                            paddingTop: '0 !important',
+                            pr: { xs: '0 !important', md: 2 }
+                          }}
+                        >
+                          <Paper 
+                            elevation={3}
+                            sx={{ 
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <Box sx={{ 
+                              flexGrow: 1,
+                              minHeight: 0,
+                              p: 2,
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}>
+                              <DrawingCanvas
+                                width="100%"
+                                height="100%"
+                                onSave={handleSaveDrawing}
+                                savedDrawing={selectedClass?.progress?.drawings?.[currentPage]}
+                              />
+                            </Box>
+                          </Paper>
+                        </Grid>
+                      </Grid>
+                    </Grid>
+
+                    {/* Recordings Panel */}
+                    {showRecordings && (
+                      <Grid 
+                        item 
+                        xs={12} 
+                        md={4} 
+                        sx={{ 
+                          height: '100%',
+                          paddingTop: '0 !important',
+                          pr: '0 !important'
+                        }}
+                      >
+                        <Paper 
+                          elevation={3}
+                          sx={{ 
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            p: 2
+                          }}
+                        >
+                          <Typography variant="h6" gutterBottom>
+                            Recordings
+                          </Typography>
+                          <Box sx={{ 
+                            flexGrow: 1,
+                            overflow: 'auto',
+                            minHeight: 0
+                          }}>
+                            {Object.entries(recordings).map(([page, pageRecordings]) => (
+                              <Box key={page} sx={{ mb: 2 }}>
+                                <Typography variant="subtitle1" gutterBottom>
+                                  Page {page}
+                                </Typography>
+                                <List dense>
+                                  {pageRecordings.map((recording, index) => (
+                                    <ListItem
+                                      key={recording.id}
+                                      secondaryAction={
+                                        <IconButton edge="end" onClick={() => handlePlayRecording(recording)}>
+                                          <PlayArrow />
+                                        </IconButton>
+                                      }
+                                    >
+                                      <ListItemText
+                                        primary={`Recording ${index + 1}`}
+                                        secondary={new Date(recording.timestamp).toLocaleString()}
+                                      />
+                                    </ListItem>
+                                  ))}
+                                </List>
+                              </Box>
+                            ))}
+                            {Object.keys(recordings).length === 0 && (
+                              <Typography color="text.secondary" align="center">
+                                No recordings yet
+                              </Typography>
+                            )}
+                          </Box>
+                        </Paper>
+                      </Grid>
+                    )}
+                  </Grid>
+                </Box>
+              </>
+            )}
+          </Container>
+        </SessionProvider>
+      )}
+    </>
   );
 };
 

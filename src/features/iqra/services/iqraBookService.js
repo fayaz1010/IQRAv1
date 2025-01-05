@@ -1,4 +1,4 @@
-import { getStorage, ref, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref, getDownloadURL, listAll, uploadBytes } from 'firebase/storage';
 import { 
   collection, 
   doc, 
@@ -34,9 +34,7 @@ export const IqraBookService = {
   async getPageUrl(bookId, pageNumber) {
     try {
       console.log('Getting page URL for book:', bookId, 'page:', pageNumber);
-      // Convert "Iqra Book 1" to "iqra-1" format
-      const normalizedBookId = bookId.toLowerCase().replace(/\s+book\s+/i, '-');
-      const pageRef = ref(storage, `iqra-books/${normalizedBookId}/pages/page_${pageNumber}.png`);
+      const pageRef = ref(storage, `iqra-books/${bookId}/pages/page_${pageNumber}.png`);
       console.log('Page storage path:', pageRef.fullPath);
       const url = await getDownloadURL(pageRef);
       console.log('Page URL retrieved successfully');
@@ -183,7 +181,40 @@ export const IqraBookService = {
       console.error('Error getting teacher sessions:', error);
       throw error;
     }
-  }
+  },
+
+  // Initialize book pages in Storage if they don't exist
+  async initializeBookPages(bookId) {
+    try {
+      console.log('Initializing pages for book:', bookId);
+      const bookRef = ref(storage, `iqra-books/${bookId}/pages`);
+      
+      // Check if pages already exist
+      const result = await listAll(bookRef);
+      if (result.items.length > 0) {
+        console.log('Pages already exist for book:', bookId);
+        return;
+      }
+      
+      // Create a blank page image (1px white image)
+      const blankPageData = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      const blankPageBuffer = Buffer.from(blankPageData, 'base64');
+      
+      // Upload 30 blank pages
+      for (let i = 1; i <= 30; i++) {
+        const pageRef = ref(storage, `iqra-books/${bookId}/pages/page_${i}.png`);
+        await uploadBytes(pageRef, blankPageBuffer, {
+          contentType: 'image/png'
+        });
+        console.log(`Uploaded blank page ${i} for book:`, bookId);
+      }
+      
+      console.log('Finished initializing pages for book:', bookId);
+    } catch (error) {
+      console.error('Error initializing book pages:', error);
+      throw error;
+    }
+  },
 };
 
 export default IqraBookService;

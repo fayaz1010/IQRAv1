@@ -189,11 +189,10 @@ const IqraBookViewer = ({
       console.log('Total pages found:', pages.length);
       setTotalPages(pages.length);
 
-      // Load URLs for current page and adjacent pages
+      // Load URLs for current page and several pages ahead/behind
       const pagesToLoad = new Set([
-        currentPage - 1,
-        currentPage,
-        currentPage + 1
+        ...Array(5).fill().map((_, i) => currentPage - 2 + i), // 2 pages before, current, and 2 pages after
+        ...Array(5).fill().map((_, i) => currentPage + 3 + i), // Next 5 pages
       ].filter(p => p > 0 && p <= pages.length));
 
       console.log('Loading pages:', [...pagesToLoad]);
@@ -212,13 +211,12 @@ const IqraBookViewer = ({
             console.log('Loaded URL for page', pageNum);
           } catch (error) {
             console.error('Error loading page', pageNum, error);
-            setError('Failed to load page ' + pageNum);
           }
         }
       }));
       
       console.log('Loaded URLs:', Object.keys(urls));
-      setPageUrls(urls);
+      setPageUrls(prev => ({ ...prev, ...urls }));
       setLoading(false);
     } catch (err) {
       console.error('Error in loadBookData:', err);
@@ -238,9 +236,25 @@ const IqraBookViewer = ({
         const pageRef = ref(storage, `iqra-books/${bookFolder}/pages/page_${pageNum}.png`);
         const url = await getDownloadURL(pageRef);
         
+        // Also load the next few pages proactively
+        const nextPages = Array(3).fill().map((_, i) => pageNum + i + 1)
+          .filter(p => p <= totalPages && !pageUrls[p]);
+        
+        const nextUrls = await Promise.all(nextPages.map(async (p) => {
+          try {
+            const nextRef = ref(storage, `iqra-books/${bookFolder}/pages/page_${p}.png`);
+            const nextUrl = await getDownloadURL(nextRef);
+            return [p, nextUrl];
+          } catch (error) {
+            console.error(`Error loading page ${p}:`, error);
+            return null;
+          }
+        }));
+        
         setPageUrls(prev => ({
           ...prev,
-          [pageNum]: url
+          [pageNum]: url,
+          ...Object.fromEntries(nextUrls.filter(Boolean))
         }));
       } catch (error) {
         console.error(`Error loading page ${pageNum}:`, error);
