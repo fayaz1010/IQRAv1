@@ -32,18 +32,36 @@ export const createSchedule = async (scheduleData) => {
     // Create individual sessions
     const sessions = [];
     const numberOfWeeks = 12; // Default to 12 weeks of sessions
+    const existingSessionsQuery = query(
+      collection(db, 'sessions'),
+      where('classId', '==', classId),
+      where('status', '==', 'scheduled')
+    );
+    const existingSessionsSnapshot = await getDocs(existingSessionsQuery);
+    const existingSessions = new Map();
+    existingSessionsSnapshot.forEach(doc => {
+      const data = doc.data();
+      existingSessions.set(data.date, doc.id);
+    });
 
     // Calculate all session dates
     for (let week = 0; week < numberOfWeeks; week++) {
       for (const day of daysOfWeek) {
         const sessionDate = new Date(timeSlots[day]);
         sessionDate.setDate(sessionDate.getDate() + (week * 7));
+        const sessionDateStr = sessionDate.toISOString();
+
+        // Skip if session already exists
+        if (existingSessions.has(sessionDateStr)) {
+          sessions.push(existingSessions.get(sessionDateStr));
+          continue;
+        }
 
         // Create calendar event (placeholder for now)
         const eventDetails = {
           title: `${classData.name} - Class Session`,
           description: `Regular class session for ${classData.name}`,
-          startTime: sessionDate.toISOString(),
+          startTime: sessionDateStr,
           endTime: new Date(sessionDate.getTime() + duration * 60000).toISOString(),
           attendees: classData.studentIds || []
         };
@@ -55,7 +73,7 @@ export const createSchedule = async (scheduleData) => {
           scheduleId: scheduleRef.id,
           classId,
           teacherId: classData.teacherId,
-          date: sessionDate.toISOString(),
+          date: sessionDateStr,
           duration,
           status: 'scheduled',
           eventId,

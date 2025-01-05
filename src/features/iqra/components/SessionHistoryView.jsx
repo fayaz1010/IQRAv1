@@ -158,21 +158,27 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
           color="primary"
         />
       </Grid>
-      {session.meet?.link && (
-        <Grid item>
-          <Link 
-            href={session.meet.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{ display: 'flex', alignItems: 'center' }}
-          >
-            <VideoCallIcon sx={{ mr: 1 }} />
-            Join Google Meet
-          </Link>
-        </Grid>
-      )}
     </Grid>
   );
+
+  const TabPanel = (props) => {
+    const { children, value, index, ...other } = props;
+    return (
+      <div
+        role="tabpanel"
+        hidden={value !== index}
+        id={`tabpanel-${index}`}
+        aria-labelledby={`tab-${index}`}
+        {...other}
+      >
+        {value === index && (
+          <Box sx={{ p: 2 }}>
+            {children}
+          </Box>
+        )}
+      </div>
+    );
+  };
 
   const renderStudentFeedback = (session, student) => {
     const feedback = session.feedback?.studentFeedback?.[student.id];
@@ -313,72 +319,77 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
         <Divider sx={{ mb: 2 }} />
 
         {/* Tabs for different views */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-          <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
-            {isStudent ? (
-              <>
-                <Tab 
-                  icon={<PersonIcon />} 
-                  label="My Feedback" 
-                  iconPosition="start"
-                />
-                <Tab 
-                  icon={<DrawIcon />} 
-                  label="My Drawings" 
-                  iconPosition="start"
-                />
-              </>
-            ) : (
-              <>
-                <Tab 
-                  icon={<SchoolIcon />} 
-                  label="Class Feedback" 
-                  iconPosition="start"
-                />
-                <Tab 
-                  icon={<PersonIcon />} 
-                  label="Student Feedback" 
-                  iconPosition="start"
-                />
-              </>
-            )}
-          </Tabs>
-        </Box>
+        <Box sx={{ width: '100%' }}>
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} aria-label="session tabs">
+              {isStudent ? (
+                <>
+                  <Tab 
+                    icon={<PersonIcon />} 
+                    label="My Feedback" 
+                    iconPosition="start"
+                    id="tab-0"
+                    aria-controls="tabpanel-0"
+                  />
+                  <Tab 
+                    icon={<DrawIcon />} 
+                    label="My Writing" 
+                    iconPosition="start"
+                    id="tab-1"
+                    aria-controls="tabpanel-1"
+                  />
+                </>
+              ) : (
+                <>
+                  <Tab 
+                    icon={<SchoolIcon />} 
+                    label="Class Feedback" 
+                    iconPosition="start"
+                    id="tab-0"
+                    aria-controls="tabpanel-0"
+                  />
+                  <Tab 
+                    icon={<PersonIcon />} 
+                    label="Student Feedback" 
+                    iconPosition="start"
+                    id="tab-1"
+                    aria-controls="tabpanel-1"
+                  />
+                </>
+              )}
+            </Tabs>
+          </Box>
 
-        {/* Content based on selected tab */}
-        {isStudent ? (
-          <>
-            {/* Student's personal view */}
-            {activeTab === 0 && (
-              <Box>
+          {isStudent ? (
+            <>
+              <TabPanel value={activeTab} index={0}>
                 {renderStudentFeedback(session, { id: currentUser.uid })}
-              </Box>
-            )}
-            {activeTab === 1 && renderDrawings(session)}
-          </>
-        ) : (
-          <>
-            {/* Teacher/Admin view */}
-            {activeTab === 0 && (
-              <Box>
+              </TabPanel>
+              <TabPanel value={activeTab} index={1}>
+                {renderDrawings(session)}
+              </TabPanel>
+            </>
+          ) : (
+            <>
+              <TabPanel value={activeTab} index={0}>
                 {session.feedback?.classNotes ? (
                   <Typography>{session.feedback.classNotes}</Typography>
                 ) : (
                   <Typography color="text.secondary">No class feedback provided</Typography>
                 )}
-              </Box>
-            )}
-            {activeTab === 1 && (
-              <Stack spacing={2}>
-                {session.students?.map((student) => (
-                  <Paper key={student.id} sx={{ p: 2 }}>
-                    {renderStudentFeedback(session, student)}
-                  </Paper>
-                ))}
-              </Stack>
-            )}
-          </>
-        )}
+              </TabPanel>
+              <TabPanel value={activeTab} index={1}>
+                <Stack spacing={2}>
+                  {session.students?.map((student) => (
+                    <Paper key={student.id} sx={{ p: 2 }}>
+                      {renderStudentFeedback(session, student)}
+                    </Paper>
+                  ))}
+                </Stack>
+              </TabPanel>
+            </>
+          )}
+        </Box>
       </Box>
     );
   };
