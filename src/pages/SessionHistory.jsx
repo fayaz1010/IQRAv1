@@ -152,125 +152,120 @@ const SessionHistory = () => {
     setStudents([]);
   };
 
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Session History
-        </Typography>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Typography variant="h4" gutterBottom>
+        Session History
+      </Typography>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
-        )}
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          {/* Class Filter */}
+          <Grid item xs={12} md={currentUser.role === 'student' ? 4 : 3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Class</InputLabel>
+              <Select
+                value={selectedClass}
+                label="Class"
+                onChange={(e) => setSelectedClass(e.target.value)}
+              >
+                <MenuItem value="">All Classes</MenuItem>
+                {classes.map((class_) => (
+                  <MenuItem key={class_.id} value={class_.id}>
+                    {class_.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
 
-        {/* Filters */}
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Class</InputLabel>
-                <Select
-                  value={selectedClass}
-                  onChange={handleClassChange}
-                  label="Class"
-                >
-                  <MenuItem value="">All Classes</MenuItem>
-                  {classes.map((classItem) => (
-                    <MenuItem key={classItem.id} value={classItem.id}>
-                      {classItem.name} {classItem.course?.name ? `- ${classItem.course.name}` : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
+          {/* Student Filter - Only show for teachers and admins */}
+          {currentUser.role !== 'student' && (
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Student</InputLabel>
                 <Select
                   value={selectedStudent}
-                  onChange={(e) => setSelectedStudent(e.target.value)}
                   label="Student"
-                  disabled={!selectedClass}
+                  onChange={(e) => setSelectedStudent(e.target.value)}
                 >
                   <MenuItem value="">All Students</MenuItem>
-                  {students.map((student) => (
-                    <MenuItem key={student.id} value={student.id}>
-                      {student.displayName || student.name}
-                    </MenuItem>
-                  ))}
+                  {selectedClass && classes
+                    .find(c => c.id === selectedClass)?.students
+                    ?.map((student) => (
+                      <MenuItem key={student.id} value={student.id}>
+                        {student.displayName || student.email}
+                      </MenuItem>
+                    ))}
                 </Select>
               </FormControl>
             </Grid>
+          )}
 
-            <Grid item xs={12} sm={6} md={2}>
+          {/* Date Filters */}
+          <Grid item xs={12} md={currentUser.role === 'student' ? 4 : 3}>
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
               <DatePicker
                 label="From Date"
                 value={startDate}
                 onChange={setStartDate}
                 slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
-            </Grid>
+            </LocalizationProvider>
+          </Grid>
 
-            <Grid item xs={12} sm={6} md={2}>
+          <Grid item xs={12} md={currentUser.role === 'student' ? 4 : 3}>
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
               <DatePicker
                 label="To Date"
                 value={endDate}
                 onChange={setEndDate}
                 slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
-            </Grid>
-
-            <Grid item xs={12} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                InputProps={{
-                  endAdornment: searchQuery && (
-                    <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        onClick={() => setSearchQuery('')}
-                      >
-                        <ClearIcon />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
+            </LocalizationProvider>
           </Grid>
-        </Paper>
+        </Grid>
 
-        {/* Session History View */}
-        <Paper>
-          <SessionHistoryView
-            classId={selectedClass || undefined}
-            studentId={selectedStudent || undefined}
-            currentUser={currentUser}
-            startDate={startDate}
-            endDate={endDate}
-            searchQuery={searchQuery}
+        {/* Search Bar */}
+        <Box sx={{ mt: 2 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search sessions..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchQuery('')}>
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
           />
-        </Paper>
-      </Container>
-    </LocalizationProvider>
+        </Box>
+      </Paper>
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" p={4}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Alert severity="error">{error}</Alert>
+      ) : (
+        <SessionHistoryView
+          classId={selectedClass}
+          studentId={currentUser.role === 'student' ? currentUser.uid : selectedStudent}
+          currentUser={currentUser}
+        />
+      )}
+    </Container>
   );
 };
 

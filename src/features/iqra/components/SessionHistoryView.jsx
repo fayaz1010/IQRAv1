@@ -18,7 +18,12 @@ import {
   Tabs,
   CircularProgress,
   Alert,
-  Link
+  Link,
+  ImageList,
+  ImageListItem,
+  Dialog,
+  DialogContent,
+  Button
 } from '@mui/material';
 import {
   ExpandMore as ExpandMoreIcon,
@@ -27,9 +32,21 @@ import {
   School as SchoolIcon,
   Person as PersonIcon,
   Download as DownloadIcon,
-  VideoCall as VideoCallIcon
+  VideoCall as VideoCallIcon,
+  Draw as DrawIcon,
+  ZoomIn as ZoomInIcon,
+  NavigateBefore as PrevIcon,
+  NavigateNext as NextIcon
 } from '@mui/icons-material';
-import { collection, query, where, getDocs, getDoc, doc, orderBy } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  doc,
+  orderBy
+} from 'firebase/firestore';
 import { db } from '../../../config/firebase';
 import { format } from 'date-fns';
 
@@ -39,6 +56,8 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
   const [error, setError] = useState(null);
   const [expandedSession, setExpandedSession] = useState(null);
   const [activeTab, setActiveTab] = useState(0);
+  const [selectedDrawing, setSelectedDrawing] = useState(null);
+  const [currentSessionIndex, setCurrentSessionIndex] = useState(0);
 
   useEffect(() => {
     loadSessions();
@@ -67,7 +86,6 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
         sessionsQuery = query(
           collection(db, 'sessions'),
           where('status', '==', 'completed'),
-          where(`studentProgress.${currentUser.uid}`, '!=', null),
           orderBy('date', 'desc')
         );
       }
@@ -80,26 +98,27 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
       const sessionsSnapshot = await getDocs(sessionsQuery);
       const sessionsData = [];
 
-      for (const docSnapshot of sessionsSnapshot.docs) {
+      for (const sessionDoc of sessionsSnapshot.docs) {
         const sessionData = {
-          id: docSnapshot.id,
-          ...docSnapshot.data()
+          id: sessionDoc.id,
+          ...sessionDoc.data()
         };
 
-        // Load class data
-        const classDoc = await getDoc(doc(db, 'classes', sessionData.classId));
-        if (classDoc.exists()) {
-          sessionData.classData = {
-            id: classDoc.id,
-            ...classDoc.data()
-          };
+        if (currentUser.role === 'student') {
+          if (!sessionData.studentProgress?.[currentUser.uid] || 
+              (classId && sessionData.classId !== classId)) {
+            continue;
+          }
+        }
 
-          // Load course data
-          if (sessionData.classData.courseId) {
-            const courseDoc = await getDoc(doc(db, 'courses', sessionData.classData.courseId));
-            if (courseDoc.exists()) {
-              sessionData.classData.course = courseDoc.data();
-            }
+        if (sessionData.classId) {
+          const classDocRef = doc(db, 'classes', sessionData.classId);
+          const classDocSnapshot = await getDoc(classDocRef);
+          if (classDocSnapshot.exists()) {
+            sessionData.class = {
+              id: classDocSnapshot.id,
+              ...classDocSnapshot.data()
+            };
           }
         }
 
@@ -129,7 +148,7 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
           {format(new Date(session.date), 'PPP')} at {session.startTime}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {session.classData?.name} • {session.classData?.course?.name} • Book {session.book}
+          {session.class?.name} • {session.class?.course?.name} • Book {session.book}
         </Typography>
       </Grid>
       <Grid item>
@@ -223,7 +242,57 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
     );
   };
 
+  const renderDrawings = (session) => {
+    if (!session.drawings || !session.drawings[currentUser.uid]) {
+      return (
+        <Typography color="text.secondary">No drawings available for this session</Typography>
+      );
+    }
+
+    const drawings = session.drawings[currentUser.uid];
+    
+    return (
+      <Box>
+        <Typography variant="subtitle2" gutterBottom>Your Drawings</Typography>
+        <ImageList cols={3} gap={8}>
+          {drawings.map((drawing, index) => (
+            <ImageListItem 
+              key={index}
+              onClick={() => setSelectedDrawing(drawing)}
+              sx={{ cursor: 'pointer' }}
+            >
+              <img
+                src={drawing.url}
+                alt={`Drawing ${index + 1}`}
+                loading="lazy"
+                style={{ borderRadius: 4 }}
+              />
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  bgcolor: 'rgba(0,0,0,0.5)',
+                  color: 'white',
+                  p: 0.5,
+                  textAlign: 'center',
+                  borderBottomLeftRadius: 4,
+                  borderBottomRightRadius: 4
+                }}
+              >
+                <Typography variant="caption">Page {drawing.page}</Typography>
+              </Box>
+            </ImageListItem>
+          ))}
+        </ImageList>
+      </Box>
+    );
+  };
+
   const renderSessionContent = (session) => {
+    const isStudent = currentUser.role === 'student';
+    
     return (
       <Box>
         {/* Session Overview */}
@@ -232,51 +301,83 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
           <Typography>
             {session.book} - Pages {session.startPage} to {session.endPage}
           </Typography>
-          <Tooltip title="Download Report">
-            <IconButton size="small">
-              <DownloadIcon />
-            </IconButton>
-          </Tooltip>
+          {!isStudent && (
+            <Tooltip title="Download Report">
+              <IconButton size="small">
+                <DownloadIcon />
+              </IconButton>
+            </Tooltip>
+          )}
         </Stack>
 
         <Divider sx={{ mb: 2 }} />
 
-        {/* Tabs for Class/Individual Feedback */}
+        {/* Tabs for different views */}
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
           <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
-            <Tab 
-              icon={<SchoolIcon />} 
-              label="Class Feedback" 
-              iconPosition="start"
-            />
-            <Tab 
-              icon={<PersonIcon />} 
-              label="Student Feedback" 
-              iconPosition="start"
-            />
+            {isStudent ? (
+              <>
+                <Tab 
+                  icon={<PersonIcon />} 
+                  label="My Feedback" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  icon={<DrawIcon />} 
+                  label="My Drawings" 
+                  iconPosition="start"
+                />
+              </>
+            ) : (
+              <>
+                <Tab 
+                  icon={<SchoolIcon />} 
+                  label="Class Feedback" 
+                  iconPosition="start"
+                />
+                <Tab 
+                  icon={<PersonIcon />} 
+                  label="Student Feedback" 
+                  iconPosition="start"
+                />
+              </>
+            )}
           </Tabs>
         </Box>
 
-        {/* Class Feedback Tab */}
-        {activeTab === 0 && (
-          <Box>
-            {session.feedback?.classNotes ? (
-              <Typography>{session.feedback.classNotes}</Typography>
-            ) : (
-              <Typography color="text.secondary">No class feedback provided</Typography>
+        {/* Content based on selected tab */}
+        {isStudent ? (
+          <>
+            {/* Student's personal view */}
+            {activeTab === 0 && (
+              <Box>
+                {renderStudentFeedback(session, { id: currentUser.uid })}
+              </Box>
             )}
-          </Box>
-        )}
-
-        {/* Student Feedback Tab */}
-        {activeTab === 1 && (
-          <Stack spacing={2}>
-            {session.students.map((student) => (
-              <Paper key={student.id} sx={{ p: 2 }}>
-                {renderStudentFeedback(session, student)}
-              </Paper>
-            ))}
-          </Stack>
+            {activeTab === 1 && renderDrawings(session)}
+          </>
+        ) : (
+          <>
+            {/* Teacher/Admin view */}
+            {activeTab === 0 && (
+              <Box>
+                {session.feedback?.classNotes ? (
+                  <Typography>{session.feedback.classNotes}</Typography>
+                ) : (
+                  <Typography color="text.secondary">No class feedback provided</Typography>
+                )}
+              </Box>
+            )}
+            {activeTab === 1 && (
+              <Stack spacing={2}>
+                {session.students?.map((student) => (
+                  <Paper key={student.id} sx={{ p: 2 }}>
+                    {renderStudentFeedback(session, student)}
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </>
         )}
       </Box>
     );
@@ -302,26 +403,66 @@ const SessionHistoryView = ({ classId, studentId, currentUser }) => {
         Session History
       </Typography>
 
-      {sessions.length === 0 ? (
-        <Alert severity="info" sx={{ m: 2 }}>No sessions found</Alert>
-      ) : (
-        <Stack spacing={2} sx={{ p: 2 }}>
-          {sessions.map((session) => (
-            <Accordion
-              key={session.id}
-              expanded={expandedSession === session.id}
-              onChange={handleAccordionChange(session.id)}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                {renderSessionHeader(session)}
-              </AccordionSummary>
-              <AccordionDetails>
-                {renderSessionContent(session)}
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Stack>
+      {/* Session Navigation */}
+      {sessions.length > 0 && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 2, mb: 2 }}>
+          <Button
+            startIcon={<PrevIcon />}
+            disabled={currentSessionIndex === 0}
+            onClick={() => setCurrentSessionIndex(prev => prev - 1)}
+          >
+            Previous Session
+          </Button>
+          <Typography color="text.secondary">
+            Session {currentSessionIndex + 1} of {sessions.length}
+          </Typography>
+          <Button
+            endIcon={<NextIcon />}
+            disabled={currentSessionIndex === sessions.length - 1}
+            onClick={() => setCurrentSessionIndex(prev => prev + 1)}
+          >
+            Next Session
+          </Button>
+        </Box>
       )}
+
+      {sessions.length > 0 ? (
+        <Box sx={{ px: 2 }}>
+          <Accordion
+            expanded={expandedSession === sessions[currentSessionIndex].id}
+            onChange={handleAccordionChange(sessions[currentSessionIndex].id)}
+          >
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              {renderSessionHeader(sessions[currentSessionIndex])}
+            </AccordionSummary>
+            <AccordionDetails>
+              {renderSessionContent(sessions[currentSessionIndex])}
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+      ) : (
+        <Typography color="text.secondary" sx={{ p: 2 }}>
+          No sessions found
+        </Typography>
+      )}
+
+      {/* Drawing Preview Dialog */}
+      <Dialog
+        open={!!selectedDrawing}
+        onClose={() => setSelectedDrawing(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogContent>
+          {selectedDrawing && (
+            <img
+              src={selectedDrawing.url}
+              alt="Drawing Preview"
+              style={{ width: '100%', height: 'auto' }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

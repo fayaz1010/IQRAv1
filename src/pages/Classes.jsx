@@ -26,7 +26,6 @@ import {
   Avatar,
   ListItemAvatar,
   Stack,
-  Link,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -50,6 +49,7 @@ import {
   getDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { Link, useNavigate } from 'react-router-dom';
 
 const TabPanel = ({ children, value, index, ...other }) => (
   <div
@@ -78,6 +78,7 @@ const Classes = () => {
     studentIds: [],
   });
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (currentUser?.uid) {
@@ -319,6 +320,10 @@ const Classes = () => {
     }
   };
 
+  const handleViewHistory = (classId) => {
+    navigate(`/sessions/history?class=${classId}`);
+  };
+
   const getCourseName = (courseId) => {
     const course = courses.find(c => c.id === courseId);
     return course ? course.title : 'No course assigned';
@@ -438,14 +443,6 @@ const Classes = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
           <Typography variant="h4">Classes</Typography>
           <Stack direction="row" spacing={2}>
-            <Button
-              component={Link}
-              to="/sessions/history"
-              startIcon={<HistoryIcon />}
-              variant="outlined"
-            >
-              Session History
-            </Button>
             {(currentUser.role === 'teacher' || currentUser.role === 'admin') && (
               <Button
                 variant="contained"
@@ -477,8 +474,7 @@ const Classes = () => {
                       <Button
                         size="small"
                         startIcon={<HistoryIcon />}
-                        component={Link}
-                        to={`/sessions/history?class=${class_.id}`}
+                        onClick={() => handleViewHistory(class_.id)}
                         sx={{ mr: 1 }}
                       >
                         View History

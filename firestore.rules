@@ -160,9 +160,14 @@ service cloud.firestore {
           isTeacherOfClass(classId) ||
           (isStudent() && exists(/databases/$(database)/documents/classes/$(classId)) &&
            request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds &&
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress']) &&
-           request.resource.data.studentProgress is map &&
-           request.resource.data.studentProgress[request.auth.uid] is number)
+           (
+             // Allow students to update their progress
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress']) ||
+             // Allow students to add their drawings
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['drawings']) &&
+             request.resource.data.drawings[request.auth.uid] is list
+           )
+          )
         );
 
         allow delete: if isAuthenticated() && (
@@ -209,37 +214,71 @@ service cloud.firestore {
 
     // Sessions collection
     match /sessions/{sessionId} {
-      allow create: if isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (getUserData().role in ['teacher', 'admin']) &&
-        exists(/databases/$(database)/documents/classes/$(request.resource.data.classId)) &&
-        get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.teacherId == request.auth.uid;
-      
-      allow read: if isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (
-          getUserData().role == 'admin' ||
-          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid) ||
-          (
-            getUserData().role == 'student' && 
-            exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
-            request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+      // Helper functions for session access
+      function isSessionParticipant() {
+        return request.auth.uid in resource.data.studentProgress;
+      }
+
+      function isSessionTeacher() {
+        return resource.data.teacherId == request.auth.uid;
+      }
+
+      function isStudentInClass() {
+        return resource.data.classId != null && 
+               exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+               request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds;
+      }
+
+      // List query rule
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        isStudent()
+      );
+
+      // Read individual document rule
+      allow get: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && isSessionTeacher()) ||
+        (isStudent() && (isSessionParticipant() || isStudentInClass()))
+      );
+
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher()
+      );
+
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && isSessionTeacher()) ||
+        (isStudent() && 
+          isSessionParticipant() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress.' + request.auth.uid])
+        )
+      );
+
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && isSessionTeacher())
+      );
+
+      // Allow access to session drawings
+      match /drawings/{drawingId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          (isTeacher() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.teacherId == request.auth.uid) ||
+          (isStudent() && request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentProgress)
+        );
+
+        allow write: if isAuthenticated() && (
+          isAdmin() ||
+          (isTeacher() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.teacherId == request.auth.uid) ||
+          (isStudent() && 
+            request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentProgress &&
+            request.resource.data.studentId == request.auth.uid
           )
         );
-      
-      allow update: if isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (
-          getUserData().role == 'admin' ||
-          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
-        );
-      
-      allow delete: if isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (
-          getUserData().role == 'admin' ||
-          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid)
-        );
+      }
     }
 
     // Drawings collection

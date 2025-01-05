@@ -127,6 +127,16 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/sessions/history"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'teacher', 'admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionHistory />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
 
         {/* Teacher routes */}
         <Route
