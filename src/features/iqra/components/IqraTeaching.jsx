@@ -493,7 +493,7 @@ const IqraTeaching = () => {
                   <ListItemText 
                     primary={
                       <Typography variant="subtitle1" color="primary" fontWeight="medium">
-                        Start Class Session
+                        To use Google Meet, Go to Settings and Connect to Google Calendar before starting a session
                       </Typography>
                     }
                   />
