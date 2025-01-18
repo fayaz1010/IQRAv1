@@ -1,40 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Box, Container, Grid, Paper, Typography, Card, CardContent, Chip } from '@mui/material';
+import {
+  Box,
+  Container,
+  Grid,
+  Paper,
+  Typography,
+  Card,
+  CardContent,
+  Chip
+} from '@mui/material';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import DashboardStats from '../../components/dashboard/DashboardStats';
-import ActiveSessions from '../../components/dashboard/ActiveSessions'; // Import ActiveSessions component
-import { db, query, collection, where, getDocs } from '../../firebase'; // Import firebase modules
+import ActiveSessions from '../../components/dashboard/ActiveSessions';
 
-// Components for each section
-const LearningProgress = () => (
-  <Paper sx={{ p: 3, height: '100%' }}>
-    <Typography variant="h6" gutterBottom>Learning Progress</Typography>
-    {/* Add learning progress content */}
-  </Paper>
-);
-
-const TodayClasses = () => (
-  <Paper sx={{ p: 3, height: '100%' }}>
-    <Typography variant="h6" gutterBottom>Today's Classes</Typography>
-    {/* Add today's classes content */}
-  </Paper>
-);
-
-const UpcomingSchedule = () => (
-  <Paper sx={{ p: 3, height: '100%' }}>
-    <Typography variant="h6" gutterBottom>Upcoming Schedule</Typography>
-    {/* Add upcoming schedule content */}
-  </Paper>
-);
-
-const RecentActivities = () => (
-  <Paper sx={{ p: 3, height: '100%' }}>
-    <Typography variant="h6" gutterBottom>Recent Activities</Typography>
-    {/* Add recent activities content */}
-  </Paper>
-);
-
-const Dashboard = () => {
+const StudentDashboard = () => {
   const { currentUser } = useAuth();
   const [upcomingClasses, setUpcomingClasses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,10 +24,10 @@ const Dashboard = () => {
       if (!currentUser) return;
 
       try {
-        // Get classes where user is the teacher
+        // Get classes where student is enrolled
         const classesQuery = query(
           collection(db, 'classes'),
-          where('teacherId', '==', currentUser.uid),
+          where('studentIds', 'array-contains', currentUser.uid),
           where('status', '==', 'active')
         );
 
@@ -95,17 +75,13 @@ const Dashboard = () => {
     >
       <Container maxWidth="lg">
         <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <DashboardStats />
-          </Grid>
-
           {/* Active Sessions */}
           <Grid item xs={12}>
             <Paper sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>
                 Active Sessions
               </Typography>
-              <ActiveSessions isTeacher={true} />
+              <ActiveSessions />
             </Paper>
           </Grid>
 
@@ -152,26 +128,10 @@ const Dashboard = () => {
               </Grid>
             </Paper>
           </Grid>
-
-          <Grid item xs={12} md={6}>
-            <LearningProgress />
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <TodayClasses />
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <UpcomingSchedule />
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <RecentActivities />
-          </Grid>
         </Grid>
       </Container>
     </Box>
   );
 };
 
-export default Dashboard;
+export default StudentDashboard;

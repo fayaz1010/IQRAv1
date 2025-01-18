@@ -38,15 +38,15 @@ import {
   VideoCall as VideoCallIcon,
   People as PeopleIcon,
   Person as PersonIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { getSchedules } from '../services/scheduleService';
 import SchedulingWizard from '../features/iqra/components/schedule/SchedulingWizard';
 import ScheduleItem from '../features/iqra/components/schedule/ScheduleItem';
+import CalendarView from '../features/iqra/components/schedule/CalendarView';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { format, parseISO } from 'date-fns';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
@@ -60,19 +60,16 @@ const Schedule = () => {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list');
   const [classDetails, setClassDetails] = useState({});
-  const [courses, setCourses] = useState({});
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedSchedules, setSelectedSchedules] = useState([]);
+  const [openScheduleDetails, setOpenScheduleDetails] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [currentWeek, setCurrentWeek] = useState(new Date());
 
   useEffect(() => {
     if (currentUser) {
-      const loadData = async () => {
-        await fetchSchedules();
-        await fetchCourses();
-        await fetchClassDetails();
-      };
-      loadData();
+      fetchSchedules();
     }
   }, [currentUser]);
 
@@ -82,29 +79,39 @@ const Schedule = () => {
     }
   }, [schedules]);
 
-  const fetchCourses = async () => {
-    try {
-      const coursesRef = collection(db, 'courses');
-      const querySnapshot = await getDocs(coursesRef);
-      const coursesData = {};
-      querySnapshot.forEach((doc) => {
-        coursesData[doc.id] = { id: doc.id, ...doc.data() };
-      });
-      setCourses(coursesData);
-    } catch (error) {
-      console.error('Error fetching courses:', error);
-    }
-  };
-
   const fetchSchedules = async () => {
     try {
       setLoading(true);
-      setError('');
+      console.log('Fetching schedules for user:', currentUser.uid, 'with role:', currentUser.role);
       const fetchedSchedules = await getSchedules(currentUser.uid, currentUser.role);
-      setSchedules(fetchedSchedules);
+      console.log('Fetched schedules:', fetchedSchedules);
+      
+      // Fetch class details for each schedule
+      const schedulesWithDetails = await Promise.all(
+        fetchedSchedules.map(async (schedule) => {
+          const classRef = doc(db, 'classes', schedule.classId);
+          const classSnap = await getDoc(classRef);
+          if (classSnap.exists()) {
+            const classData = classSnap.data();
+            console.log('Class data for', schedule.classId, ':', classData);
+            const enrichedSchedule = {
+              ...schedule,
+              className: classData.name || 'Untitled Class',
+              studentCount: classData.studentIds ? classData.studentIds.length : 0,
+              book: classData.book,
+              color: classData.color || theme.palette.primary.main
+            };
+            return enrichedSchedule;
+          }
+          return schedule;
+        })
+      );
+      
+      console.log('Final schedules with details:', schedulesWithDetails);
+      setSchedules(schedulesWithDetails);
     } catch (error) {
       console.error('Error fetching schedules:', error);
-      setError('Failed to fetch schedules');
+      setError('Failed to load schedules');
     } finally {
       setLoading(false);
     }
@@ -160,8 +167,8 @@ const Schedule = () => {
 
         // Get course name
         let courseName = 'General Course';
-        if (classData.courseId && courses[classData.courseId]) {
-          courseName = courses[classData.courseId].title || 'General Course';
+        if (classData.courseId && classData.courseId in classDetails) {
+          courseName = classDetails[classData.courseId].title || 'General Course';
         }
 
         details[doc.id] = {
@@ -180,13 +187,10 @@ const Schedule = () => {
     }
   };
 
-  const handleWizardComplete = () => {
-    setOpenWizard(false);
-    fetchSchedules();
-  };
-
-  const formatTime = (timeString) => {
-    return new Date(timeString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const handleDayClick = (date, daySchedules) => {
+    setSelectedDate(date);
+    setSelectedSchedules(daySchedules);
+    setOpenScheduleDetails(true);
   };
 
   const handleStudentsClick = (event, students) => {
@@ -196,6 +200,55 @@ const Schedule = () => {
 
   const handlePopoverClose = () => {
     setAnchorEl(null);
+  };
+
+  const renderScheduleDetails = () => {
+    if (!selectedDate) return null;
+
+    return (
+      <Dialog
+        open={openScheduleDetails}
+        onClose={() => setOpenScheduleDetails(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Classes for {format(selectedDate, 'PPPP')}
+        </DialogTitle>
+        <DialogContent>
+          {selectedSchedules.length === 0 ? (
+            <Typography color="textSecondary">
+              No classes scheduled for this day
+            </Typography>
+          ) : (
+            <List>
+              {selectedSchedules.map((schedule, index) => (
+                <ListItem key={index}>
+                  <ListItemAvatar>
+                    <Avatar>
+                      <EventIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={schedule.className}
+                    secondary={`${format(parseISO(schedule.date), 'h:mm a')} - ${schedule.duration} minutes`}
+                  />
+                  {schedule.meetLink && (
+                    <IconButton
+                      color="primary"
+                      href={schedule.meetLink}
+                      target="_blank"
+                    >
+                      <VideoCallIcon />
+                    </IconButton>
+                  )}
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
   };
 
   const renderListView = () => {
@@ -407,77 +460,116 @@ const Schedule = () => {
     );
   };
 
-  return (
-    <Container maxWidth="lg">
-      <Box sx={{ mt: 4, mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1">
-            Class Schedule
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setOpenWizard(true)}
-          >
-            Schedule New Class
-          </Button>
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+          <CircularProgress />
         </Box>
+      );
+    }
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+    if (error) {
+      return (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      );
+    }
 
-        <Paper sx={{ mb: 3 }}>
-          <Tabs
-            value={view}
-            onChange={(_, newValue) => setView(newValue)}
-            indicatorColor="primary"
-            textColor="primary"
-            centered
-          >
-            <Tab value="list" label="List View" />
-            <Tab value="calendar" label="Calendar View" />
-          </Tabs>
-        </Paper>
+    if (view === 'calendar') {
+      return (
+        <CalendarView
+          schedules={schedules}
+          onDayClick={handleDayClick}
+        />
+      );
+    }
 
-        <Dialog
-          open={openWizard}
-          onClose={() => setOpenWizard(false)}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>Schedule Class Sessions</DialogTitle>
-          <DialogContent>
-            <SchedulingWizard onComplete={handleWizardComplete} />
-          </DialogContent>
-        </Dialog>
-
-        <Popover
-          open={Boolean(anchorEl)}
-          anchorEl={anchorEl}
-          onClose={handlePopoverClose}
-          anchorOrigin={{
-            vertical: 'bottom',
-            horizontal: 'center',
-          }}
-          transformOrigin={{
-            vertical: 'top',
-            horizontal: 'center',
-          }}
-        >
-          {renderStudentsList(selectedStudents)}
-        </Popover>
-
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-            <CircularProgress />
-          </Box>
+    return (
+      <Box>
+        {schedules.length === 0 ? (
+          <Typography color="textSecondary" align="center">
+            No schedules found. Click the "Schedule New Class" button to create one.
+          </Typography>
         ) : (
-          view === 'list' ? renderListView() : renderCalendarView()
+          schedules.map((schedule) => (
+            <ScheduleItem
+              key={schedule.id}
+              schedule={schedule}
+              classData={{
+                name: schedule.className,
+                studentCount: schedule.studentCount,
+                book: schedule.book
+              }}
+            />
+          ))
         )}
       </Box>
+    );
+  };
+
+  return (
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ mb: 4, display: 'flex', alignItems: 'center' }}>
+        <Typography variant="h4" component="h1" sx={{ flexGrow: 1 }}>
+          Class Schedule
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setOpenWizard(true)}
+        >
+          Schedule New Class
+        </Button>
+      </Box>
+
+      <Paper sx={{ mb: 2 }}>
+        <Tabs
+          value={view}
+          onChange={(e, newValue) => setView(newValue)}
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab value="list" label="List View" />
+          <Tab value="calendar" label="Calendar View" />
+        </Tabs>
+      </Paper>
+
+      {renderContent()}
+      {renderScheduleDetails()}
+
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={handlePopoverClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'center',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'center',
+        }}
+      >
+        {renderStudentsList(selectedStudents)}
+      </Popover>
+
+      <Dialog
+        open={openWizard}
+        onClose={() => setOpenWizard(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Schedule New Class</DialogTitle>
+        <DialogContent>
+          <SchedulingWizard
+            onComplete={() => {
+              setOpenWizard(false);
+              fetchSchedules();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </Container>
   );
 };

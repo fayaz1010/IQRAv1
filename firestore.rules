@@ -223,7 +223,10 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         (
           getUserData().role == 'admin' ||
-          (getUserData().role == 'teacher' && resource.data.teacherId == request.auth.uid) ||
+          (
+            getUserData().role == 'teacher' && 
+            resource.data.teacherId == request.auth.uid
+          ) ||
           (
             getUserData().role == 'student' && 
             exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&

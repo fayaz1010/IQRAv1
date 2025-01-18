@@ -19,11 +19,12 @@ import {
   Alert,
 } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
+import { LocalizationProvider, DateTimePicker, TimePicker } from '@mui/x-date-pickers';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../../config/firebase';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { createSchedule, updateSchedule } from '../../../../services/scheduleService';
+import { startOfDay, format, parse, addDays } from 'date-fns';
 
 const steps = [
   'Select Class',
@@ -32,17 +33,27 @@ const steps = [
   'Review & Confirm'
 ];
 
+const weekDays = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' }
+];
+
 const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
   const { currentUser } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
   const [classes, setClasses] = useState([]);
   const [formData, setFormData] = useState(initialData || {
     classId: '',
-    startDate: new Date(),
+    startDate: startOfDay(new Date()),
     recurrencePattern: 'weekly',
     daysOfWeek: [],
     duration: 60,
-    timeSlots: {}, // Map of day index to time slot
+    timeSlots: {}, // Map of day index to time
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -85,35 +96,55 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
   };
 
   const handleDateChange = (field) => (newValue) => {
-    setFormData({ ...formData, [field]: newValue });
+    setFormData({ ...formData, [field]: startOfDay(newValue) });
+  };
+
+  const handleTimeChange = (day) => (newValue) => {
+    if (!newValue) return;
+    
+    setFormData(prev => ({
+      ...prev,
+      timeSlots: {
+        ...prev.timeSlots,
+        [day]: format(newValue, 'HH:mm')
+      }
+    }));
   };
 
   const handleDayToggle = (day) => {
     const currentDays = formData.daysOfWeek;
     const newDays = currentDays.includes(day)
       ? currentDays.filter(d => d !== day)
-      : [...currentDays, day];
-    setFormData({ ...formData, daysOfWeek: newDays });
-  };
+      : [...currentDays, day].sort();
 
-  const handleTimeSlotChange = (day) => (newValue) => {
-    setFormData(prev => ({
-      ...prev,
-      timeSlots: {
-        ...prev.timeSlots,
-        [day]: newValue
+    // Remove time slot if day is unchecked
+    const newTimeSlots = { ...formData.timeSlots };
+    if (!currentDays.includes(day)) {
+      // Initialize time slot for new day
+      if (!newTimeSlots[day]) {
+        const defaultTime = new Date();
+        defaultTime.setHours(9, 0, 0, 0);
+        newTimeSlots[day] = format(defaultTime, 'HH:mm');
       }
-    }));
+    } else {
+      delete newTimeSlots[day];
+    }
+
+    setFormData({
+      ...formData,
+      daysOfWeek: newDays,
+      timeSlots: newTimeSlots
+    });
   };
 
   const validateStep = (step) => {
     switch (step) {
       case 0:
-        return !!formData.classId;
+        return formData.classId !== '';
       case 1:
-        return !!formData.startDate && !!formData.recurrencePattern;
+        return formData.startDate && formData.recurrencePattern;
       case 2:
-        return formData.daysOfWeek.length > 0 && formData.duration > 0 &&
+        return formData.daysOfWeek.length > 0 &&
           formData.daysOfWeek.every(day => formData.timeSlots[day]);
       default:
         return true;
@@ -122,27 +153,33 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
 
   const handleSubmit = async () => {
     try {
-      if (!validateStep(activeStep)) {
-        setError('Please fill in all required fields');
-        return;
-      }
-
-      if (loading) return; // Prevent multiple submissions
       setLoading(true);
       setError('');
-      
+
+      // Convert time slots to Date objects for the schedule service
+      const timeSlots = {};
+      for (const [day, time] of Object.entries(formData.timeSlots)) {
+        const [hours, minutes] = time.split(':');
+        const timeDate = addDays(startOfDay(formData.startDate), Number(day));
+        timeDate.setHours(Number(hours), Number(minutes), 0, 0);
+        timeSlots[day] = timeDate;
+      }
+
+      const scheduleData = {
+        ...formData,
+        timeSlots
+      };
+
       if (isEditing) {
-        await updateSchedule(initialData.id, formData);
+        await updateSchedule(initialData.id, scheduleData);
       } else {
-        await createSchedule(formData);
+        await createSchedule(scheduleData);
       }
-      
-      if (onComplete) {
-        onComplete();
-      }
-    } catch (err) {
-      setError('Failed to ' + (isEditing ? 'update' : 'create') + ' schedule: ' + err.message);
-      console.error('Error ' + (isEditing ? 'updating' : 'creating') + ' schedule:', err);
+
+      onComplete();
+    } catch (error) {
+      console.error('Error saving schedule:', error);
+      setError('Failed to save schedule. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -152,36 +189,33 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
     switch (step) {
       case 0:
         return (
-          <Box sx={{ mt: 2 }}>
-            <FormControl fullWidth>
-              <InputLabel>Select Class</InputLabel>
-              <Select
-                value={formData.classId}
-                onChange={handleInputChange('classId')}
-                label="Select Class"
-              >
-                {classes.map((cls) => (
-                  <MenuItem key={cls.id} value={cls.id}>
-                    {cls.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Box>
+          <FormControl fullWidth>
+            <InputLabel>Class</InputLabel>
+            <Select
+              value={formData.classId}
+              onChange={handleInputChange('classId')}
+              label="Class"
+            >
+              {classes.map((cls) => (
+                <MenuItem key={cls.id} value={cls.id}>
+                  {cls.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         );
-
       case 1:
         return (
-          <Box sx={{ mt: 2 }}>
+          <Box>
             <LocalizationProvider dateAdapter={AdapterDateFns}>
               <DateTimePicker
                 label="Start Date"
                 value={formData.startDate}
                 onChange={handleDateChange('startDate')}
-                renderInput={(params) => <TextField {...params} fullWidth />}
+                renderInput={(params) => <TextField {...params} fullWidth sx={{ mb: 2 }} />}
               />
             </LocalizationProvider>
-            <FormControl fullWidth sx={{ mt: 2 }}>
+            <FormControl fullWidth>
               <InputLabel>Recurrence Pattern</InputLabel>
               <Select
                 value={formData.recurrencePattern}
@@ -189,93 +223,86 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
                 label="Recurrence Pattern"
               >
                 <MenuItem value="weekly">Weekly</MenuItem>
-                <MenuItem value="custom">Custom</MenuItem>
+                <MenuItem value="biweekly">Bi-weekly</MenuItem>
+                <MenuItem value="monthly">Monthly</MenuItem>
               </Select>
             </FormControl>
           </Box>
         );
-
       case 2:
         return (
-          <Box sx={{ mt: 2 }}>
-            <FormGroup row sx={{ mb: 2 }}>
-              {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, index) => (
-                <FormControlLabel
-                  key={day}
-                  control={
-                    <Checkbox
-                      checked={formData.daysOfWeek.includes(index)}
-                      onChange={() => handleDayToggle(index)}
-                    />
-                  }
-                  label={day}
-                />
+          <Box>
+            <FormGroup>
+              {weekDays.map(({ value, label }) => (
+                <Box key={value} sx={{ mb: 2 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={formData.daysOfWeek.includes(value)}
+                        onChange={() => handleDayToggle(value)}
+                      />
+                    }
+                    label={label}
+                  />
+                  {formData.daysOfWeek.includes(value) && (
+                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                      <TimePicker
+                        label={`Time for ${label}`}
+                        value={formData.timeSlots[value] ? 
+                          parse(formData.timeSlots[value], 'HH:mm', new Date()) :
+                          null
+                        }
+                        onChange={handleTimeChange(value)}
+                        renderInput={(params) => <TextField {...params} sx={{ ml: 4 }} />}
+                      />
+                    </LocalizationProvider>
+                  )}
+                </Box>
               ))}
             </FormGroup>
             <TextField
-              fullWidth
               type="number"
               label="Duration (minutes)"
               value={formData.duration}
               onChange={handleInputChange('duration')}
-              sx={{ mb: 2 }}
+              fullWidth
+              sx={{ mt: 2 }}
             />
-            {formData.daysOfWeek.map((day) => (
-              <Box key={day} sx={{ mb: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day]}
-                </Typography>
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DateTimePicker
-                    label="Time Slot"
-                    value={formData.timeSlots[day] || null}
-                    onChange={handleTimeSlotChange(day)}
-                    renderInput={(params) => <TextField {...params} fullWidth />}
-                  />
-                </LocalizationProvider>
-              </Box>
-            ))}
           </Box>
         );
-
       case 3:
         return (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="h6" gutterBottom>Schedule Summary</Typography>
-            <Typography>
-              Class: {classes.find(c => c.id === formData.classId)?.name}
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              Schedule Summary
             </Typography>
             <Typography>
-              Start Date: {formData.startDate.toLocaleDateString()}
+              Start Date: {format(formData.startDate, 'PPP')}
             </Typography>
             <Typography>
-              Pattern: {formData.recurrencePattern}
+              Recurrence: {formData.recurrencePattern}
             </Typography>
+            <Typography>
+              Days and Times:
+            </Typography>
+            {formData.daysOfWeek.map((day) => (
+              <Typography key={day} sx={{ ml: 2 }}>
+                {weekDays.find(d => d.value === day).label}: {formData.timeSlots[day]}
+              </Typography>
+            ))}
             <Typography>
               Duration: {formData.duration} minutes
             </Typography>
-            {formData.daysOfWeek.map(day => (
-              <Typography key={day}>
-                {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day]}: {
-                  formData.timeSlots[day]?.toLocaleTimeString()
-                }
-              </Typography>
-            ))}
           </Box>
         );
-
       default:
         return null;
     }
   };
 
   return (
-    <Container maxWidth="md">
+    <Container maxWidth="sm">
       <Paper sx={{ p: 3, mt: 3 }}>
-        <Typography variant="h5" gutterBottom>
-          {isEditing ? 'Edit Schedule' : 'Schedule Class Sessions'}
-        </Typography>
-        
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
           {steps.map((label) => (
             <Step key={label}>
@@ -293,22 +320,24 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
         {renderStepContent(activeStep)}
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
-          <Button
-            disabled={activeStep === 0}
-            onClick={handleBack}
-            sx={{ mr: 1 }}
-          >
-            Back
-          </Button>
-          <Button
-            variant="contained"
-            onClick={activeStep === steps.length - 1 ? handleSubmit : handleNext}
-            disabled={!validateStep(activeStep) || loading}
-          >
-            {activeStep === steps.length - 1 
-              ? (loading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Schedule' : 'Schedule Sessions')) 
-              : 'Next'}
-          </Button>
+          {activeStep > 0 && (
+            <Button onClick={handleBack} sx={{ mr: 1 }}>
+              Back
+            </Button>
+          )}
+          {activeStep === steps.length - 1 ? (
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : isEditing ? 'Update' : 'Create'}
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={handleNext}>
+              Next
+            </Button>
+          )}
         </Box>
       </Paper>
     </Container>

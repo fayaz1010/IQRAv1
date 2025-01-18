@@ -11,26 +11,34 @@ import {
   DialogActions,
   Button,
   Tooltip,
-  TextField,
+  Card,
+  CardContent,
+  Chip,
+  Grid,
+  Avatar,
 } from '@mui/material';
 import {
   MoreVert as MoreVertIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
   VideoCall as VideoCallIcon,
+  Event as EventIcon,
+  AccessTime as AccessTimeIcon,
+  Book as BookIcon,
+  People as PeopleIcon,
+  Repeat as RepeatIcon,
 } from '@mui/icons-material';
-import { deleteSchedule, updateSingleSession } from '../../../../services/scheduleService';
+import { deleteSchedule } from '../../../../services/scheduleService';
 import SchedulingWizard from './SchedulingWizard';
-import { LocalizationProvider, DateTimePicker } from '@mui/x-date-pickers';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { format, parse } from 'date-fns';
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [openEdit, setOpenEdit] = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [editingSession, setEditingSession] = useState(null);
-  const [editSessionTime, setEditSessionTime] = useState(null);
 
   const handleMenuClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -41,42 +49,26 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
   };
 
   const handleEditClick = () => {
-    setOpenEdit(true);
     handleMenuClose();
+    setOpenEdit(true);
   };
 
   const handleDeleteClick = () => {
+    handleMenuClose();
     setOpenDelete(true);
-    handleMenuClose();
   };
 
-  const handleSessionEditClick = (day) => {
-    setEditingSession(day);
-    setEditSessionTime(new Date(schedule.timeSlots[day]));
-    handleMenuClose();
-  };
-
-  const handleSessionEditSave = async () => {
-    try {
-      setLoading(true);
-      await updateSingleSession(schedule.id, editingSession, {
-        timeSlot: editSessionTime
-      });
-      onUpdate();
-      setEditingSession(null);
-    } catch (error) {
-      console.error('Error updating session:', error);
-    } finally {
-      setLoading(false);
-    }
+  const handleEditComplete = () => {
+    setOpenEdit(false);
+    if (onUpdate) onUpdate();
   };
 
   const handleDeleteConfirm = async () => {
     try {
       setLoading(true);
       await deleteSchedule(schedule.id);
-      onDelete(schedule.id);
       setOpenDelete(false);
+      if (onDelete) onDelete();
     } catch (error) {
       console.error('Error deleting schedule:', error);
     } finally {
@@ -84,89 +76,137 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
     }
   };
 
-  const handleEditComplete = () => {
-    setOpenEdit(false);
-    onUpdate();
+  const formatRecurrence = () => {
+    if (!schedule.recurrencePattern) return null;
+    const days = schedule.daysOfWeek.map(day => 
+      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]
+    ).join(', ');
+    return `${schedule.recurrencePattern.charAt(0).toUpperCase() + schedule.recurrencePattern.slice(1)} on ${days}`;
   };
 
-  return (
-    <Box sx={{ mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
-      <Box display="flex" alignItems="center" justifyContent="space-between">
-        <Box>
-          <Typography variant="h6">{classData?.name || 'Loading...'}</Typography>
-          {schedule.daysOfWeek.map((day) => (
-            <Box key={day} display="flex" alignItems="center" sx={{ mt: 1 }}>
-              {editingSession === day ? (
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <DateTimePicker
-                      label="New Time"
-                      value={editSessionTime}
-                      onChange={(newValue) => setEditSessionTime(newValue)}
-                      renderInput={(params) => <TextField {...params} size="small" />}
-                    />
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={handleSessionEditSave}
-                      disabled={loading}
-                    >
-                      {loading ? 'Saving...' : 'Save'}
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => setEditingSession(null)}
-                      disabled={loading}
-                    >
-                      Cancel
-                    </Button>
-                  </Box>
-                </LocalizationProvider>
-              ) : (
-                <>
-                  <Typography>
-                    {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day]} - {
-                      new Date(schedule.timeSlots[day]).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    }
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleSessionEditClick(day)}
-                    sx={{ ml: 1 }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                  {schedule.meetLinks?.[day] && (
-                    <Tooltip title="Join Meet">
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        href={schedule.meetLinks[day]}
-                        target="_blank"
-                        sx={{ ml: 1 }}
-                      >
-                        <VideoCallIcon />
-                      </IconButton>
-                    </Tooltip>
-                  )}
-                </>
-              )}
-            </Box>
-          ))}
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Duration: {schedule.duration} minutes
-          </Typography>
-        </Box>
+  const formatTimeSlot = (dayIndex) => {
+    try {
+      if (!schedule.timeSlots || !schedule.timeSlots[dayIndex]) {
+        return 'No time set';
+      }
 
-        <IconButton onClick={handleMenuClick}>
-          <MoreVertIcon />
-        </IconButton>
+      const timeString = schedule.timeSlots[dayIndex];
+      if (typeof timeString !== 'string') {
+        return 'Invalid time';
+      }
+
+      // Parse the ISO date string
+      const date = new Date(timeString);
+      if (isNaN(date.getTime())) {
+        return 'Invalid format';
+      }
+
+      // Format the time in 12-hour format
+      return format(date, 'h:mm a');
+    } catch (error) {
+      console.error('Error formatting time slot:', error);
+      return 'Invalid format';
+    }
+  };
+
+  const renderScheduleInfo = () => {
+    return (
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+        {schedule.daysOfWeek?.map((day, index) => (
+          <Chip
+            key={index}
+            icon={<AccessTimeIcon />}
+            label={`${WEEKDAYS[day]} - ${formatTimeSlot(day)}`}
+            size="small"
+            variant="outlined"
+          />
+        ))}
+        <Chip
+          icon={<PeopleIcon />}
+          label={`${schedule.studentCount || 0} Student${(schedule.studentCount || 0) !== 1 ? 's' : ''}`}
+          size="small"
+          variant="outlined"
+        />
+        {schedule.recurrencePattern && (
+          <Chip
+            icon={<RepeatIcon />}
+            label={formatRecurrence()}
+            size="small"
+            variant="outlined"
+          />
+        )}
       </Box>
+    );
+  };
 
-      {/* Menu */}
+  if (!schedule || !schedule.daysOfWeek) {
+    return null;
+  }
+
+  return (
+    <>
+      <Card 
+        sx={{ 
+          mb: 2,
+          borderLeft: 6,
+          borderColor: 'primary.main',
+          '&:hover': {
+            boxShadow: 6,
+          },
+        }}
+      >
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item>
+              <Avatar 
+                sx={{ 
+                  bgcolor: 'primary.main',
+                  width: 56,
+                  height: 56,
+                }}
+              >
+                <EventIcon />
+              </Avatar>
+            </Grid>
+            
+            <Grid item xs={12} sm>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                  {classData?.name || 'Loading...'}
+                </Typography>
+                {schedule.meetLinks?.[0] && (
+                  <Tooltip title="Join Class">
+                    <IconButton 
+                      color="primary" 
+                      href={schedule.meetLinks[0]} 
+                      target="_blank"
+                      sx={{ ml: 1 }}
+                    >
+                      <VideoCallIcon />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <IconButton onClick={handleMenuClick}>
+                  <MoreVertIcon />
+                </IconButton>
+              </Box>
+
+              {renderScheduleInfo()}
+
+              {classData?.description && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {classData.description}
+                </Typography>
+              )}
+
+              <Typography variant="body2" color="text.secondary">
+                Duration: {schedule.duration} minutes
+              </Typography>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
@@ -182,7 +222,6 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
         </MenuItem>
       </Menu>
 
-      {/* Edit All Sessions Dialog */}
       <Dialog
         open={openEdit}
         onClose={() => setOpenEdit(false)}
@@ -199,7 +238,6 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <Dialog
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -227,7 +265,7 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 };
 

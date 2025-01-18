@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -6,246 +6,276 @@ import {
   Paper,
   Typography,
   Avatar,
-  Card,
-  CardContent,
   IconButton,
   useTheme,
 } from '@mui/material';
-import { Settings as SettingsIcon, Person as PersonIcon } from '@mui/icons-material';
-import { motion } from 'framer-motion';
-import { useAuth } from '../../contexts/AuthContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { Settings as SettingsIcon } from '@mui/icons-material';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-
-const StatCard = ({ title, value, icon, color }) => {
-  const theme = useTheme();
-  
-  return (
-    <Card
-      component={motion.div}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      sx={{
-        height: '100%',
-        background: `linear-gradient(45deg, ${color}88 30%, ${color}44 90%)`,
-        color: theme.palette.mode === 'dark' ? '#fff' : '#000',
-      }}
-    >
-      <CardContent>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="h6" component="div">
-              {title}
-            </Typography>
-            <Typography variant="h4">{value}</Typography>
-          </Box>
-          {icon}
-        </Box>
-      </CardContent>
-    </Card>
-  );
-};
+import { useAuth } from '../../contexts/AuthContext';
+import TeachingPanel from './components/TeachingPanel';
+import ScheduleTimeline from './components/ScheduleTimeline';
+import StudentProgressGrid from './components/StudentProgressGrid';
+import TeachingStats from './components/TeachingStats';
+import DashboardStats from './components/DashboardStats';
 
 const Dashboard = () => {
   const theme = useTheme();
   const { currentUser } = useAuth();
-  const [stats, setStats] = useState({
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [todayClasses, setTodayClasses] = useState([]);
+  const [recurringClasses, setRecurringClasses] = useState([]);
+  const [allStudents, setAllStudents] = useState([]);
+  const [teachingStats, setTeachingStats] = useState({
+    totalClassesToday: 0,
+    completedClasses: 0,
+    upcomingClasses: 0,
+    activeStudents: 0,
+    totalStudents: 0,
+    totalClasses: 0,
     progress: 0,
-    classesToday: 0,
     nextClass: 'No classes',
-    assignments: 0,
+    assignments: 0
   });
 
+  // Function to calculate the date range for today
+  const getTodayRange = () => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    return { startOfDay, endOfDay };
+  };
+
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+    if (!currentUser?.uid) return;
 
-        // Fetch today's classes
-        const classesRef = collection(db, 'classes');
-        const todayQuery = query(
-          classesRef,
-          where('teacherId', '==', currentUser.uid),
-          where('startTime', '>=', today.toISOString()),
-          where('startTime', '<', tomorrow.toISOString())
-        );
-        
-        const todaySnapshot = await getDocs(todayQuery);
-        const classesToday = todaySnapshot.size;
+    const { startOfDay, endOfDay } = getTodayRange();
 
-        // Fetch next class
-        const nextClassQuery = query(
-          classesRef,
-          where('teacherId', '==', currentUser.uid),
-          where('startTime', '>=', new Date().toISOString())
-        );
+    // Query for active sessions
+    const sessionsQuery = query(
+      collection(db, 'sessions'),
+      where('teacherId', '==', currentUser.uid),
+      where('status', '==', 'active')
+    );
+
+    // Query for recurring classes
+    const recurringQuery = query(
+      collection(db, 'schedules'),
+      where('teacherId', '==', currentUser.uid),
+      where('recurrencePattern', '==', 'weekly')
+    );
+
+    // Query for today's classes
+    const classesQuery = query(
+      collection(db, 'sessions'),
+      where('teacherId', '==', currentUser.uid),
+      where('date', '>=', startOfDay.toISOString()),
+      where('date', '<=', endOfDay.toISOString())
+    );
+
+    // Query for all classes
+    const allClassesQuery = query(
+      collection(db, 'classes'),
+      where('teacherId', '==', currentUser.uid)
+    );
+
+    // Query for assignments
+    const assignmentsQuery = query(
+      collection(db, 'assignments'),
+      where('teacherId', '==', currentUser.uid),
+      where('status', '==', 'pending')
+    );
+
+    // Subscribe to recurring classes
+    const unsubscribeRecurring = onSnapshot(recurringQuery, async (snapshot) => {
+      const recurring = [];
+      for (const doc of snapshot.docs) {
+        const scheduleData = { id: doc.id, ...doc.data() };
         
-        const nextClassSnapshot = await getDocs(nextClassQuery);
-        let nextClass = 'No classes';
-        if (!nextClassSnapshot.empty) {
-          const nextClassData = nextClassSnapshot.docs[0].data();
-          nextClass = new Date(nextClassData.startTime).toLocaleTimeString();
+        // Get class details for each schedule
+        const classRef = collection(db, 'classes');
+        const classSnap = await getDocs(query(classRef, where('__name__', '==', scheduleData.classId)));
+        if (!classSnap.empty) {
+          const classData = { id: classSnap.docs[0].id, ...classSnap.docs[0].data() };
+          recurring.push({
+            ...scheduleData,
+            name: classData.name,
+            studentIds: classData.studentIds,
+            book: classData.book,
+            dayOfWeek: scheduleData.daysOfWeek[0], // Assuming one day per schedule for now
+            hour: new Date(scheduleData.timeSlots[scheduleData.daysOfWeek[0]]).getHours(),
+            minute: new Date(scheduleData.timeSlots[scheduleData.daysOfWeek[0]]).getMinutes()
+          });
         }
+      }
+      setRecurringClasses(recurring);
+    });
 
-        // Fetch assignments
-        const assignmentsRef = collection(db, 'assignments');
-        const assignmentsQuery = query(
-          assignmentsRef,
-          where('teacherId', '==', currentUser.uid),
-          where('status', '==', 'pending')
-        );
+    // Subscribe to active sessions
+    const unsubscribeSessions = onSnapshot(sessionsQuery, (snapshot) => {
+      const sessions = [];
+      snapshot.forEach((doc) => {
+        sessions.push({ id: doc.id, ...doc.data() });
+      });
+      setActiveSessions(sessions);
+    });
+
+    // Subscribe to today's classes
+    const unsubscribeClasses = onSnapshot(classesQuery, async (snapshot) => {
+      const classes = [];
+      for (const doc of snapshot.docs) {
+        const sessionData = { id: doc.id, ...doc.data() };
         
-        const assignmentsSnapshot = await getDocs(assignmentsQuery);
-        const assignments = assignmentsSnapshot.size;
+        // Get class details for each session
+        const classRef = collection(db, 'classes');
+        const classSnap = await getDocs(query(classRef, where('__name__', '==', sessionData.classId)));
+        if (!classSnap.empty) {
+          const classData = { id: classSnap.docs[0].id, ...classSnap.docs[0].data() };
+          classes.push({
+            ...sessionData,
+            name: classData.name,
+            studentIds: classData.studentIds,
+            book: classData.book,
+            date: sessionData.date
+          });
+        }
+      }
+      setTodayClasses(classes);
+      
+      // Update teaching stats
+      const now = new Date();
+      const completed = classes.filter(c => new Date(c.date) < now).length;
+      const upcoming = classes.filter(c => new Date(c.date) > now).length;
+      const nextClass = classes
+        .filter(c => new Date(c.date) > now)
+        .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
 
-        setStats({
-          progress: Math.round((classesToday / (classesToday + assignments)) * 100) || 0,
-          classesToday,
-          nextClass,
-          assignments,
+      setTeachingStats(prev => ({
+        ...prev,
+        totalClassesToday: classes.length,
+        completedClasses: completed,
+        upcomingClasses: upcoming,
+        nextClass: nextClass ? nextClass.name : 'No classes'
+      }));
+    });
+
+    // Subscribe to assignments
+    const unsubscribeAssignments = onSnapshot(assignmentsQuery, (snapshot) => {
+      setTeachingStats(prev => ({
+        ...prev,
+        assignments: snapshot.size
+      }));
+    });
+
+    // Fetch all students
+    const fetchStudents = async () => {
+      try {
+        // Get unique student IDs from both regular and recurring classes
+        const studentIds = new Set();
+        
+        // From regular classes
+        const regularClassesSnap = await getDocs(allClassesQuery);
+        regularClassesSnap.forEach(doc => {
+          const classData = doc.data();
+          classData.studentIds?.forEach(id => studentIds.add(id));
         });
+        
+        // From recurring classes
+        recurringClasses.forEach(rc => {
+          rc.studentIds?.forEach(id => studentIds.add(id));
+        });
+
+        // Fetch student details
+        if (studentIds.size > 0) {
+          const studentsQuery = query(
+            collection(db, 'users'),
+            where('role', '==', 'student'),
+            where('__name__', 'in', Array.from(studentIds))
+          );
+          
+          const studentsSnap = await getDocs(studentsQuery);
+          const students = [];
+          studentsSnap.forEach(doc => {
+            students.push({ id: doc.id, ...doc.data() });
+          });
+          setAllStudents(students);
+          
+          // Update teaching stats with student count
+          setTeachingStats(prev => ({
+            ...prev,
+            totalStudents: students.length,
+            activeStudents: students.filter(s => s.status !== 'inactive').length || students.length
+          }));
+        }
       } catch (error) {
-        console.error('Error fetching stats:', error);
+        console.error('Error fetching students:', error);
       }
     };
 
-    if (currentUser) {
-      fetchStats();
-    }
+    // Fetch all classes to get total count
+    const fetchAllClasses = async () => {
+      try {
+        const snapshot = await getDocs(allClassesQuery);
+        setTeachingStats(prev => ({
+          ...prev,
+          totalClasses: snapshot.size
+        }));
+      } catch (error) {
+        console.error('Error fetching all classes:', error);
+      }
+    };
+
+    // Initial fetches
+    fetchStudents();
+    fetchAllClasses();
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeRecurring();
+      unsubscribeSessions();
+      unsubscribeClasses();
+      unsubscribeAssignments();
+    };
   }, [currentUser]);
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4, minHeight: '100vh' }}>
-      <Box sx={{ mb: 4 }}>
-        <Grid container spacing={3}>
-          {/* Profile Section */}
-          <Grid item xs={12}>
-            <Paper 
-              sx={{ 
-                p: 2, 
-                display: 'flex', 
-                alignItems: 'center',
-                backgroundColor: theme.palette.background.paper,
-                color: theme.palette.text.primary,
-              }}
-            >
-              <Avatar 
-                sx={{ 
-                  width: 56, 
-                  height: 56, 
-                  bgcolor: theme.palette.primary.main,
-                  color: theme.palette.primary.contrastText,
-                }}
-              >
-                {currentUser?.email?.[0]?.toUpperCase() || 'U'}
-              </Avatar>
-              <Box sx={{ ml: 2, flex: 1 }}>
-                <Typography variant="h5">{currentUser?.email}</Typography>
-                <Typography variant="subtitle1" color="textSecondary">
-                  Teacher
-                </Typography>
-              </Box>
-              <IconButton>
-                <SettingsIcon />
-              </IconButton>
-            </Paper>
-          </Grid>
-
-          {/* Stats Cards */}
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard
-              title="Progress"
-              value={`${stats.progress}%`}
-              icon={<PersonIcon sx={{ fontSize: 40 }} />}
-              color={theme.palette.primary.main}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard
-              title="Classes Today"
-              value={stats.classesToday}
-              icon={<PersonIcon sx={{ fontSize: 40 }} />}
-              color={theme.palette.secondary.main}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard
-              title="Next Class"
-              value={stats.nextClass}
-              icon={<PersonIcon sx={{ fontSize: 40 }} />}
-              color={theme.palette.success.main}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard
-              title="Assignments"
-              value={stats.assignments}
-              icon={<PersonIcon sx={{ fontSize: 40 }} />}
-              color={theme.palette.warning.main}
-            />
-          </Grid>
-
-          {/* Schedule Section */}
-          <Grid item xs={12} md={6}>
-            <Paper
-              sx={{
-                p: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                minHeight: 240,
-                backgroundColor: theme.palette.background.paper,
-                color: theme.palette.text.primary,
-              }}
-            >
-              <Typography variant="h6" gutterBottom>
-                Today's Schedule
-              </Typography>
-              {/* Add schedule content here */}
-            </Paper>
-          </Grid>
-
-          {/* Upcoming Classes Section */}
-          <Grid item xs={12} md={6}>
-            <Paper
-              sx={{
-                p: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                minHeight: 240,
-                backgroundColor: theme.palette.background.paper,
-                color: theme.palette.text.primary,
-              }}
-            >
-              <Typography variant="h6" gutterBottom>
-                Upcoming Classes
-              </Typography>
-              {/* Add upcoming classes content here */}
-            </Paper>
-          </Grid>
-
-          {/* Student Progress Section */}
-          <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                minHeight: 240,
-                backgroundColor: theme.palette.background.paper,
-                color: theme.palette.text.primary,
-              }}
-            >
-              <Typography variant="h6" gutterBottom>
-                Student Progress
-              </Typography>
-              {/* Add student progress content here */}
-            </Paper>
-          </Grid>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Grid container spacing={3}>
+        {/* Stats Overview */}
+        <Grid item xs={12}>
+          <DashboardStats stats={teachingStats} />
         </Grid>
-      </Box>
+
+        {/* Teaching Stats */}
+        <Grid item xs={12} md={4}>
+          <TeachingStats stats={teachingStats} />
+        </Grid>
+
+        {/* Schedule Timeline */}
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', borderRadius: 2 }}>
+            <ScheduleTimeline
+              classes={todayClasses}
+              recurringClasses={recurringClasses}
+            />
+          </Paper>
+        </Grid>
+
+        {/* Active Teaching Panel */}
+        <Grid item xs={12} md={8}>
+          <TeachingPanel
+            activeSessions={activeSessions}
+          />
+        </Grid>
+
+        {/* Student Progress */}
+        <Grid item xs={12} md={4}>
+          <StudentProgressGrid
+            classes={todayClasses}
+            activeSessions={activeSessions}
+          />
+        </Grid>
+      </Grid>
     </Container>
   );
 };
