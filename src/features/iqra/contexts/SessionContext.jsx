@@ -127,7 +127,7 @@ export function SessionProvider({ children }) {
         console.log('Meet created successfully:', meetLink);
         
         meetData = {
-          link: meetLink,
+          link: meetLink.link,
           eventId: meetLink.eventId,
           startTime: meetLink.startTime,
           endTime: meetLink.endTime
@@ -182,19 +182,21 @@ export function SessionProvider({ children }) {
   };
 
   const createMeetLink = async () => {
-    try {
-      const startTime = new Date().toISOString();
-      const endTime = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour from now
-      
+    try {      
       console.log('Creating Google Meet for session...');
       const meetData = await createGoogleMeet(
         `Iqra Teaching Session - ${new Date().toLocaleDateString()}`,
-        startTime,
-        endTime
+        null, // startTime will be set to now in createGoogleMeet
+        60    // Duration in minutes
       );
       console.log('Meet created successfully:', meetData);
       
-      return meetData;
+      return {
+        link: meetData.meetLink,
+        eventId: meetData.eventId,
+        startTime: meetData.startTime,
+        endTime: meetData.endTime
+      };
     } catch (error) {
       console.error('Failed to create Google Meet - Full error:', error);
       throw new Error('Unexpected error creating Meet: ' + error.message);

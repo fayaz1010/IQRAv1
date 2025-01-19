@@ -84,12 +84,10 @@ export const createGoogleMeet = async (title, startTime, durationMinutes = 60) =
     const accessToken = await getCalendarToken();
     console.log('Access token obtained');
 
-    // Ensure startTime is a valid Date object
-    const start = typeof startTime === 'string' ? new Date(startTime) : startTime;
-    if (isNaN(start.getTime())) {
-      throw new Error('Invalid start time provided');
-    }
-
+    // Convert to UTC time to avoid timezone issues
+    const start = new Date();
+    start.setSeconds(0, 0); // Reset seconds and milliseconds
+    
     // Calculate end time
     const end = new Date(start.getTime() + (durationMinutes * 60 * 1000));
   
@@ -140,7 +138,9 @@ export const createGoogleMeet = async (title, startTime, durationMinutes = 60) =
     console.log('Meet created successfully:', data);
     return {
       meetLink: data.hangoutLink,
-      eventId: data.id
+      eventId: data.id,
+      startTime: start.toISOString(),
+      endTime: end.toISOString()
     };
   } catch (error) {
     console.error('Error in createGoogleMeet:', error);
