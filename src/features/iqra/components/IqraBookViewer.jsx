@@ -10,6 +10,9 @@ import {
   Paper,
   CircularProgress,
   ButtonGroup,
+  Button,
+  Typography,
+  Alert
 } from '@mui/material';
 import {
   ZoomIn,
@@ -20,8 +23,11 @@ import {
   Delete as Clear,
   NavigateBefore,
   NavigateNext,
+  Save,
 } from '@mui/icons-material';
 import { IqraBookService } from '../services/iqraBookService';
+import { useSession } from '../contexts/SessionContext';
+import { getStorage, ref, listAll, getDownloadURL } from 'firebase/storage';
 
 const DrawingTool = {
   POINTER: 'pointer',
@@ -29,12 +35,21 @@ const DrawingTool = {
   HIGHLIGHTER: 'highlighter',
 };
 
-const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = false }) => {
+const IqraBookViewer = ({ 
+  bookId, 
+  initialPage = 1, 
+  onPageChange,
+  readOnly = false,
+  studentId = null, 
+  showSaveButton = false 
+}) => {
   const [currentPage, setCurrentPage] = useState(initialPage);
+  const [totalPages, setTotalPages] = useState(0);
+  const [pageUrls, setPageUrls] = useState({});
   const [zoom, setZoom] = useState(100);
-  const [pageUrl, setPageUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [pageUrl, setPageUrl] = useState(null);
   const [bookMetadata, setBookMetadata] = useState(null);
   const [currentTool, setCurrentTool] = useState(DrawingTool.POINTER);
   const [lines, setLines] = useState([]);
@@ -42,39 +57,54 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
   const [stageSize, setStageSize] = useState({ width: 800, height: 1000 });
   const containerRef = useRef(null);
   const stageRef = useRef(null);
+  const imageRef = useRef(null);
 
+  const { activeSession, saveDrawing, updateStudentProgress } = useSession();
   const [pageImage] = useImage(pageUrl);
 
   useEffect(() => {
-    const loadBookData = async () => {
+    if (bookId) {
+      loadBookData();
+    }
+  }, [bookId]);
+
+  useEffect(() => {
+    if (initialPage !== currentPage) {
+      setCurrentPage(initialPage);
+    }
+  }, [initialPage]);
+
+  useEffect(() => {
+    const loadPageData = async () => {
       try {
-        const metadata = await IqraBookService.getBookMetadata(bookId);
-        setBookMetadata(metadata);
-        await loadPage(currentPage);
+        const url = pageUrls[currentPage];
+        setPageUrl(url);
+        if (onPageChange) {
+          onPageChange(currentPage);
+        }
+        if (activeSession && studentId) {
+          await updateStudentProgress(studentId, currentPage);
+        }
       } catch (error) {
         console.error(error);
-        setError('Failed to load book data');
-      } finally {
-        setLoading(false);
+        setError('Failed to load page');
       }
     };
 
-    loadBookData();
-  }, [bookId, currentPage]);
+    loadPageData();
+  }, [currentPage, pageUrls]);
 
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current && pageImage) {
         const container = containerRef.current;
-        const containerWidth = container.offsetWidth - 40; // Account for padding
+        const containerWidth = container.offsetWidth - 40;
         const containerHeight = container.offsetHeight - 40;
         
-        // Calculate dimensions maintaining aspect ratio
         const imageRatio = pageImage.height / pageImage.width;
         let width = containerWidth;
         let height = width * imageRatio;
 
-        // If height exceeds container, scale down
         if (height > containerHeight) {
           height = containerHeight;
           width = height / imageRatio;
@@ -95,17 +125,153 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
     return () => window.removeEventListener('resize', updateDimensions);
   }, [pageImage, zoom]);
 
-  const loadPage = async (pageNumber) => {
-    try {
-      const url = await IqraBookService.getPageUrl(bookId, pageNumber);
-      setPageUrl(url);
-      if (onPageChange) {
-        onPageChange(pageNumber);
+  useEffect(() => {
+    const loadDrawings = async () => {
+      if (activeSession && studentId) {
+        try {
+          const sessionRef = doc(db, 'classes', activeSession.classId, 'sessions', activeSession.id);
+          const sessionDoc = await getDoc(sessionRef);
+          
+          if (sessionDoc.exists()) {
+            const sessionData = sessionDoc.data();
+            const studentDrawings = sessionData.studentProgress[studentId]?.drawings[currentPage];
+            
+            if (studentDrawings) {
+              setLines(studentDrawings);
+            } else {
+              setLines([]);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading drawings:', error);
+        }
       }
-    } catch (error) {
-      console.error(error);
-      setError('Failed to load page');
+    };
+
+    loadDrawings();
+  }, [currentPage, activeSession, studentId]);
+
+  const loadBookData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Loading book data for:', bookId);
+      
+      // Convert book ID to storage path format
+      // e.g., "Iqra Book 1" -> "iqra-1"
+      const bookFolder = bookId.toLowerCase()
+        .replace(/iqra book (\d+)/i, 'iqra-$1')
+        .replace(/\s+/g, '-');
+      
+      console.log('Book folder path:', bookFolder);
+      
+      const storage = getStorage();
+      const bookRef = ref(storage, `iqra-books/${bookFolder}/pages`);
+      
+      console.log('Listing pages from:', bookRef.fullPath);
+      
+      // List all pages in the book directory
+      const result = await listAll(bookRef);
+      console.log('Found pages:', result.items.length);
+      
+      const pages = result.items.sort((a, b) => {
+        // Extract page numbers from "page_X.png" format
+        const pageA = parseInt(a.name.match(/page_(\d+)/i)?.[1] || '0');
+        const pageB = parseInt(b.name.match(/page_(\d+)/i)?.[1] || '0');
+        return pageA - pageB;
+      });
+      
+      if (pages.length === 0) {
+        throw new Error(`No pages found in book: ${bookFolder}`);
+      }
+      
+      console.log('Total pages found:', pages.length);
+      setTotalPages(pages.length);
+
+      // Load URLs for current page and several pages ahead/behind
+      const pagesToLoad = new Set([
+        ...Array(5).fill().map((_, i) => currentPage - 2 + i), // 2 pages before, current, and 2 pages after
+        ...Array(5).fill().map((_, i) => currentPage + 3 + i), // Next 5 pages
+      ].filter(p => p > 0 && p <= pages.length));
+
+      console.log('Loading pages:', [...pagesToLoad]);
+      
+      const urls = {};
+      await Promise.all([...pagesToLoad].map(async (pageNum) => {
+        const pageFile = pages.find(p => {
+          const num = parseInt(p.name.match(/page_(\d+)/i)?.[1] || '0');
+          return num === pageNum;
+        });
+        
+        if (pageFile) {
+          try {
+            const url = await getDownloadURL(pageFile);
+            urls[pageNum] = url;
+            console.log('Loaded URL for page', pageNum);
+          } catch (error) {
+            console.error('Error loading page', pageNum, error);
+          }
+        }
+      }));
+      
+      console.log('Loaded URLs:', Object.keys(urls));
+      setPageUrls(prev => ({ ...prev, ...urls }));
+      setLoading(false);
+    } catch (err) {
+      console.error('Error in loadBookData:', err);
+      setError(err.message || 'Failed to load book data');
+      setLoading(false);
     }
+  };
+
+  const loadPageData = async (pageNum) => {
+    if (!pageUrls[pageNum] && pageNum > 0 && pageNum <= totalPages) {
+      try {
+        const bookFolder = bookId.toLowerCase()
+          .replace(/iqra book (\d+)/i, 'iqra-$1')
+          .replace(/\s+/g, '-');
+        
+        const storage = getStorage();
+        const pageRef = ref(storage, `iqra-books/${bookFolder}/pages/page_${pageNum}.png`);
+        const url = await getDownloadURL(pageRef);
+        
+        // Also load the next few pages proactively
+        const nextPages = Array(3).fill().map((_, i) => pageNum + i + 1)
+          .filter(p => p <= totalPages && !pageUrls[p]);
+        
+        const nextUrls = await Promise.all(nextPages.map(async (p) => {
+          try {
+            const nextRef = ref(storage, `iqra-books/${bookFolder}/pages/page_${p}.png`);
+            const nextUrl = await getDownloadURL(nextRef);
+            return [p, nextUrl];
+          } catch (error) {
+            console.error(`Error loading page ${p}:`, error);
+            return null;
+          }
+        }));
+        
+        setPageUrls(prev => ({
+          ...prev,
+          [pageNum]: url,
+          ...Object.fromEntries(nextUrls.filter(Boolean))
+        }));
+      } catch (error) {
+        console.error(`Error loading page ${pageNum}:`, error);
+      }
+    }
+  };
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      loadPageData(newPage);
+      onPageChange?.(newPage);
+    }
+  };
+
+  const handleZoom = (delta) => {
+    setZoom(prev => Math.min(Math.max(50, prev + delta), 200));
   };
 
   const handleMouseDown = (e) => {
@@ -141,8 +307,14 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
     setLines([]);
   };
 
-  const handleZoom = (newZoom) => {
-    setZoom(Math.max(50, Math.min(200, newZoom)));
+  const handleSaveDrawings = async () => {
+    if (!activeSession || !studentId) return;
+    
+    try {
+      await saveDrawing(studentId, currentPage, lines);
+    } catch (error) {
+      console.error('Error saving drawings:', error);
+    }
   };
 
   if (loading) {
@@ -164,139 +336,97 @@ const IqraBookViewer = ({ bookId, initialPage = 1, onPageChange, readOnly = fals
   }
 
   return (
-    <Box ref={containerRef} sx={{ width: '100%', height: 'calc(100vh - 200px)', p: 2 }}>
-      <Stack spacing={2}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          {/* Navigation Controls */}
-          <Stack direction="row" spacing={1} alignItems="center">
-            <IconButton
-              onClick={() => {
-                const newPage = Math.max(1, currentPage - 1);
-                setCurrentPage(newPage);
-                loadPage(newPage);
-              }}
-              disabled={currentPage <= 1}
-            >
-              <NavigateBefore />
-            </IconButton>
-            <Box sx={{ minWidth: 100 }}>
-              Page {currentPage} of {bookMetadata?.totalPages}
-            </Box>
-            <IconButton
-              onClick={() => {
-                const newPage = Math.min(bookMetadata?.totalPages || currentPage, currentPage + 1);
-                setCurrentPage(newPage);
-                loadPage(newPage);
-              }}
-              disabled={currentPage >= (bookMetadata?.totalPages || 1)}
-            >
-              <NavigateNext />
-            </IconButton>
-          </Stack>
-
-          {/* Zoom Controls */}
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ width: 200 }}>
-            <IconButton onClick={() => handleZoom(zoom - 10)} disabled={zoom <= 50}>
-              <ZoomOut />
-            </IconButton>
-            <Slider
-              value={zoom}
-              onChange={(_, value) => handleZoom(value)}
-              min={50}
-              max={200}
-              step={10}
-              valueLabelDisplay="auto"
-              valueLabelFormat={value => `${value}%`}
-            />
-            <IconButton onClick={() => handleZoom(zoom + 10)} disabled={zoom >= 200}>
-              <ZoomIn />
-            </IconButton>
-          </Stack>
-
-          {/* Drawing Tools */}
-          {!readOnly && (
-            <ButtonGroup>
-              <Tooltip title="Brush">
-                <IconButton
-                  onClick={() => setCurrentTool(DrawingTool.BRUSH)}
-                  color={currentTool === DrawingTool.BRUSH ? 'primary' : 'default'}
-                >
-                  <Brush />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Highlighter">
-                <IconButton
-                  onClick={() => setCurrentTool(DrawingTool.HIGHLIGHTER)}
-                  color={currentTool === DrawingTool.HIGHLIGHTER ? 'primary' : 'default'}
-                >
-                  <Highlight />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Undo">
-                <IconButton onClick={handleUndo} disabled={lines.length === 0}>
-                  <Undo />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Clear">
-                <IconButton onClick={handleClear} disabled={lines.length === 0}>
-                  <Clear />
-                </IconButton>
-              </Tooltip>
-            </ButtonGroup>
-          )}
-        </Stack>
-
-        {/* Canvas */}
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            bgcolor: 'grey.100',
-            borderRadius: 1,
-            overflow: 'auto',
-            flex: 1,
-          }}
-        >
-          <Stage
-            width={stageSize.width}
-            height={stageSize.height}
-            ref={stageRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            style={{
-              cursor: currentTool === DrawingTool.POINTER ? 'default' : 'crosshair'
-            }}
-          >
-            <Layer>
-              {pageImage && (
-                <KonvaImage
-                  image={pageImage}
-                  width={stageSize.width}
-                  height={stageSize.height}
-                />
-              )}
-              {lines.map((line, i) => (
-                <Line
-                  key={i}
-                  points={line.points}
-                  stroke={line.color}
-                  strokeWidth={line.strokeWidth}
-                  tension={0.5}
-                  lineCap="round"
-                  lineJoin="round"
-                  globalCompositeOperation={
-                    line.tool === DrawingTool.HIGHLIGHTER
-                      ? 'multiply'
-                      : 'source-over'
-                  }
-                />
-              ))}
-            </Layer>
-          </Stage>
+    <Box 
+      ref={containerRef}
+      display="flex" 
+      flexDirection="column" 
+      height="100%"
+      sx={{ backgroundColor: '#f5f5f5' }}
+    >
+      <Box 
+        display="flex" 
+        justifyContent="space-between" 
+        alignItems="center" 
+        p={1}
+        sx={{ backgroundColor: '#fff', borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Box display="flex" alignItems="center">
+          <Tooltip title="Previous Page">
+            <span>
+              <IconButton 
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
+              >
+                <NavigateBefore />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Typography sx={{ mx: 2 }}>
+            Page {currentPage} of {totalPages}
+          </Typography>
+          <Tooltip title="Next Page">
+            <span>
+              <IconButton 
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+              >
+                <NavigateNext />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Box>
-      </Stack>
+        <Box display="flex" alignItems="center">
+          <Tooltip title="Zoom Out">
+            <span>
+              <IconButton onClick={() => handleZoom(-10)} disabled={zoom <= 50}>
+                <ZoomOut />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Typography sx={{ mx: 1 }}>{zoom}%</Typography>
+          <Tooltip title="Zoom In">
+            <span>
+              <IconButton onClick={() => handleZoom(10)} disabled={zoom >= 200}>
+                <ZoomIn />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+      </Box>
+      
+      <Box 
+        flex={1} 
+        overflow="auto" 
+        display="flex" 
+        justifyContent="center" 
+        alignItems="flex-start"
+        p={2}
+      >
+        {pageUrls[currentPage] && (
+          <img 
+            ref={imageRef}
+            src={pageUrls[currentPage]} 
+            alt={`Page ${currentPage}`}
+            style={{
+              maxWidth: '100%',
+              transform: `scale(${zoom / 100})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.2s'
+            }}
+          />
+        )}
+      </Box>
+      
+      <Box px={2} py={1}>
+        <Slider
+          value={currentPage}
+          min={1}
+          max={totalPages}
+          onChange={(_, value) => handlePageChange(value)}
+          valueLabelDisplay="auto"
+          valueLabelFormat={value => `Page ${value}`}
+        />
+      </Box>
     </Box>
   );
 };

@@ -126,11 +126,7 @@ const IqraTeaching = () => {
 
   useEffect(() => {
     if (activeClass?.course?.iqraBooks?.length > 0 && !activeSession) {
-      // Extract book number from "Iqra Book X" format
-      const firstBook = activeClass.course.iqraBooks[0];
-      const bookNumber = firstBook.match(/\d+/)[0];
-      console.log('Starting session with first book:', bookNumber);
-      handleStartSession(activeClass.id, bookNumber);
+      handleStartSession(activeClass.id, activeClass.course.iqraBooks[0]);
     }
   }, [activeClass]);
 
@@ -212,16 +208,6 @@ const IqraTeaching = () => {
           const courseDocSnapshot = await getDoc(courseDocRef);
           if (courseDocSnapshot.exists()) {
             courseData = courseDocSnapshot.data();
-            // Ensure book IDs are in the correct format
-            if (courseData.iqraBooks) {
-              courseData.iqraBooks = courseData.iqraBooks.map(bookId => {
-                if (/^iqra-\d+$/i.test(bookId)) {
-                  return bookId.toLowerCase();
-                }
-                const match = bookId.match(/^iqra\s*book\s*(\d+)$/i);
-                return match ? `iqra-${match[1]}` : bookId;
-              });
-            }
           }
         }
         
@@ -244,7 +230,7 @@ const IqraTeaching = () => {
               email: studentData.email,
               photoURL: studentData.photoURL,
               progress: progress[classData.courseId] || {
-                currentBook: courseData?.iqraBooks?.[0] || 'iqra-1',
+                currentBook: courseData?.iqraBooks?.[0] || 'Iqra Book 1',
                 currentPage: 1,
                 lastUpdated: null
               }
@@ -272,10 +258,7 @@ const IqraTeaching = () => {
 
   const handleStartSession = async (classId, bookId) => {
     try {
-      // Clean book ID - remove 'iqra-' prefix if present
-      const cleanBookId = bookId.replace('iqra-', '');
-      console.log('Starting session with book:', cleanBookId);
-      await startSession(classId, cleanBookId);
+      await startSession(classId, bookId);
     } catch (error) {
       console.error('Error starting session:', error);
       setError('Failed to start session');
@@ -286,13 +269,7 @@ const IqraTeaching = () => {
     if (!activeSession || !activeClass) return;
     
     try {
-      // Extract book number and clean it
-      const bookNumber = newBook.includes('Iqra Book ') 
-        ? newBook.match(/\d+/)[0]
-        : newBook.replace('iqra-', '');
-      
-      console.log('Changing to book:', bookNumber);
-      await handleStartSession(activeClass.id, bookNumber);
+      await handleStartSession(activeClass.id, newBook);
     } catch (error) {
       console.error('Error changing book:', error);
       setError('Failed to change book');
@@ -560,7 +537,6 @@ const IqraTeaching = () => {
     if (!activeSession) return null;
 
     const currentClass = classes.find(c => c.id === activeSession.classId);
-    const availableBooks = currentClass?.course?.iqraBooks || [];
 
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -595,65 +571,152 @@ const IqraTeaching = () => {
               <Typography variant="h6" gutterBottom>
                 Teaching Session: {activeClass?.name}
               </Typography>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <FormControl sx={{ minWidth: 200 }}>
-                  <InputLabel id="book-select-label">Book</InputLabel>
-                  <Select
-                    labelId="book-select-label"
-                    id="book-select"
-                    value={activeSession.book || ''}
-                    label="Book"
-                    onChange={(e) => handleBookChange(e.target.value)}
-                  >
-                    {availableBooks.map((book) => (
-                      <MenuItem key={book} value={book}>
-                        {book}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Typography variant="subtitle1" color="text.secondary">
-                  Page {activeSession?.currentPage}
-                </Typography>
-              </Stack>
+              <Typography variant="subtitle1" color="text.secondary">
+                Course: {activeClass?.course?.title} | {activeSession?.book} - Page {activeSession?.currentPage}
+              </Typography>
             </Box>
             <Box display="flex" alignItems="center" gap={2}>
               <Box display="flex" alignItems="center">
-                {isFullScreen ? (
-                  <Tooltip title="Exit Fullscreen">
-                    <IconButton onClick={handleFullScreen}>
-                      <FullscreenExit />
+                <Tooltip title="Previous Page">
+                  <span>
+                    <IconButton 
+                      onClick={() => handlePageChange(activeSession?.currentPage - 1)}
+                      disabled={!activeSession || activeSession?.currentPage <= 1}
+                    >
+                      <NavigateBefore />
                     </IconButton>
-                  </Tooltip>
-                ) : (
-                  <Tooltip title="Fullscreen">
-                    <IconButton onClick={handleFullScreen}>
-                      <Fullscreen />
+                  </span>
+                </Tooltip>
+                <Typography sx={{ mx: 2 }}>
+                  Page {activeSession?.currentPage || 1}
+                </Typography>
+                <Tooltip title="Next Page">
+                  <span>
+                    <IconButton 
+                      onClick={() => handlePageChange(activeSession?.currentPage + 1)}
+                      disabled={!activeSession}
+                    >
+                      <NavigateNext />
                     </IconButton>
-                  </Tooltip>
-                )}
+                  </span>
+                </Tooltip>
               </Box>
+
+              <Tooltip title={isFullScreen ? "Exit Fullscreen" : "Enter Fullscreen"}>
+                <span>
+                  <IconButton 
+                    onClick={handleFullScreen} 
+                    color="primary"
+                    disabled={!activeSession}
+                  >
+                    {isFullScreen ? <FullscreenExit /> : <Fullscreen />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Select Book</InputLabel>
+                <Select
+                  value={activeSession?.book || ''}
+                  onChange={(e) => handleBookChange(e.target.value)}
+                  label="Select Book"
+                  disabled={!activeClass}
+                >
+                  {activeClass?.course?.iqraBooks?.map((book) => (
+                    <MenuItem key={book} value={book}>
+                      {book}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
               <Button
                 variant="contained"
                 color="error"
-                onClick={() => setOpenEndSession(true)}
                 startIcon={<StopIcon />}
+                onClick={() => setOpenEndSession(true)}
+                disabled={!activeSession}
               >
                 End Session
+              </Button>
+
+              <Button
+                variant="contained"
+                color={showMeetControls ? "success" : "primary"}
+                startIcon={<VideoCallIcon />}
+                onClick={() => setShowMeetControls(!showMeetControls)}
+                disabled={!activeSession?.meet?.link}
+              >
+                {showMeetControls ? "Hide Meet Controls" : "Show Meet Controls"}
               </Button>
             </Box>
           </Box>
         </Paper>
 
-        <Box flex={1} id="book-viewer-container">
-          <IqraBookViewer
-            bookId={activeSession.book.replace('Iqra Book ', '')}
-            currentPage={activeSession.currentPage}
-            onPageChange={handlePageChange}
-            readOnly={false}
-          />
-        </Box>
+        <Grid container spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+          <Grid item xs={6}>
+            <Paper 
+              id="book-viewer-container"
+              sx={{ 
+                p: 1, 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                transition: 'all 0.3s ease',
+                ...(isFullScreen && {
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 1300,
+                  m: 0,
+                  borderRadius: 0,
+                })
+              }}
+            >
+              {activeSession && (
+                <IqraBookViewer
+                  key={`${activeSession.book}-${activeSession.currentPage}-${isFullScreen}`}
+                  bookId={activeSession.book}
+                  initialPage={activeSession.currentPage}
+                  onPageChange={handlePageChange}
+                />
+              )}
+            </Paper>
+          </Grid>
+
+          <Grid item xs={6}>
+            <Paper 
+              sx={{ 
+                p: 1, 
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+            >
+              <PracticeArea
+                activeSession={activeSession}
+                selectedStudent={selectedStudent}
+                onlineStudents={currentClass?.students || []}
+                classData={currentClass}
+              />
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {error && (
+          <Snackbar 
+            open={!!error} 
+            autoHideDuration={6000} 
+            onClose={() => setError(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          </Snackbar>
+        )}
       </Box>
     );
   };
