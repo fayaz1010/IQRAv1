@@ -23,6 +23,38 @@ const ActiveSessionCard = ({ session }) => {
 
   if (!session) return null;
 
+  console.log('Rendering ActiveSessionCard:', {
+    id: session.id,
+    hasClassData: !!session.classData,
+    classDataDetails: session.classData,
+    startTime: session.startTime,
+    hasStudentProgress: !!session.studentProgress
+  });
+
+  const getStartTime = (startTime) => {
+    if (!startTime) return new Date();
+    
+    try {
+      // Handle Firestore Timestamp
+      if (typeof startTime.toDate === 'function') {
+        return startTime.toDate();
+      }
+      // Handle ISO string
+      if (typeof startTime === 'string') {
+        return new Date(startTime);
+      }
+      // Handle Date object
+      if (startTime instanceof Date) {
+        return startTime;
+      }
+      // Default to current time if invalid
+      return new Date();
+    } catch (error) {
+      console.error('Error parsing start time:', error);
+      return new Date();
+    }
+  };
+
   const {
     id,
     classData,
@@ -33,10 +65,7 @@ const ActiveSessionCard = ({ session }) => {
     meet
   } = session;
 
-  const startedAgo = startTime ? formatDistanceToNow(
-    startTime.toDate(),
-    { addSuffix: true }
-  ) : 'Just now';
+  const startedAgo = formatDistanceToNow(getStartTime(startTime), { addSuffix: true });
 
   const totalStudents = classData?.students?.length || 0;
   const activeStudents = Object.keys(studentProgress || {}).length;

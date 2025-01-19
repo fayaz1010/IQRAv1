@@ -23,43 +23,80 @@ const ActiveSessions = ({ isTeacher = false }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      console.log('No current user, skipping active sessions fetch');
+      return;
+    }
 
-    console.log('Fetching active sessions for user:', currentUser.uid, 'isTeacher:', isTeacher);
+    console.log('Starting to fetch active sessions for user:', currentUser.uid, 'isTeacher:', isTeacher);
 
-    // Query active sessions based on user role
-    const sessionsQuery = isTeacher
-      ? query(
-          collection(db, 'sessions'),
-          where('teacherId', '==', currentUser.uid),
-          where('status', '==', 'active'),
-          where('endTime', '==', null)  // Only truly active sessions
-        )
-      : query(
-          collection(db, 'sessions'),
-          where('studentIds', 'array-contains', currentUser.uid),
-          where('status', '==', 'active'),
-          where('endTime', '==', null)  // Only truly active sessions
-        );
+    try {
+      // Query active sessions based on user role
+      const sessionsQuery = isTeacher
+        ? query(
+            collection(db, 'sessions'),
+            where('teacherId', '==', currentUser.uid),
+            where('status', '==', 'active'),
+            where('endTime', '==', null)  // Only truly active sessions
+          )
+        : query(
+            collection(db, 'sessions'),
+            where('studentIds', 'array-contains', currentUser.uid),
+            where('status', '==', 'active'),
+            where('endTime', '==', null)  // Only truly active sessions
+          );
 
-    const unsubscribe = onSnapshot(sessionsQuery, (snapshot) => {
-      const sessionData = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        // Only include sessions that are actually active (have a start time but no end time)
-        if (data.startTime && !data.endTime) {
-          console.log('Found active session in component:', { id: doc.id, ...data });
-          sessionData.push({
-            id: doc.id,
-            ...data
+      const unsubscribe = onSnapshot(sessionsQuery, 
+        (snapshot) => {
+          console.log('Active sessions snapshot received:', {
+            total: snapshot.size,
+            empty: snapshot.empty,
+            currentUser: currentUser.uid,
+            isTeacher
           });
+          
+          const sessionData = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            console.log('Examining session:', {
+              id: doc.id,
+              status: data.status,
+              startTime: data.startTime,
+              endTime: data.endTime,
+              teacherId: data.teacherId
+            });
+            
+            // Only include sessions that are actually active (have a start time but no end time)
+            if (data.startTime && !data.endTime) {
+              console.log('Found active session in component:', { id: doc.id, ...data });
+              sessionData.push({
+                id: doc.id,
+                ...data
+              });
+            } else {
+              console.log('Session excluded because:', !data.startTime ? 'no startTime' : 'has endTime');
+            }
+          });
+          console.log('Final Active Sessions:', {
+            count: sessionData.length,
+            sessions: sessionData
+          });
+          setSessions(sessionData);
+        },
+        (error) => {
+          console.error('Error in active sessions subscription:', error);
+          setSessions([]); // Reset sessions on error
         }
-      });
-      console.log('Active Sessions component sessions:', sessionData);
-      setSessions(sessionData);
-    });
+      );
 
-    return () => unsubscribe();
+      return () => {
+        console.log('Cleaning up active sessions subscription');
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('Error setting up active sessions query:', error);
+      setSessions([]); // Reset sessions on error
+    }
   }, [currentUser, isTeacher]);
 
   const handleJoinSession = (sessionId) => {

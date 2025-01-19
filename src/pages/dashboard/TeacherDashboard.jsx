@@ -15,7 +15,8 @@ import {
   getDoc,
   orderBy,
   limit,
-  onSnapshot
+  onSnapshot,
+  updateDoc
 } from 'firebase/firestore';
 import { startOfDay, endOfDay } from 'date-fns';
 import { getSchedules } from '../../services/scheduleService';
@@ -67,12 +68,52 @@ const TeacherDashboard = () => {
     completedSessions: 0,
     averageProgress: 0
   });
+  const [teachingStats, setTeachingStats] = useState({
+    totalHours: 0,
+    weeklyHours: 0,
+    completedSessions: 0,
+    activeSessions: 0,
+    averageHoursPerSession: 0
+  });
 
   useEffect(() => {
     if (!currentUser) {
       navigate('/login');
       return;
     }
+
+    // Subscribe to active sessions
+    const activeSessionsQuery = query(
+      collection(db, 'sessions'),
+      where('teacherId', '==', currentUser.uid),
+      where('status', '==', 'active'),
+      where('endTime', '==', null)
+    );
+
+    const unsubscribeActiveSessions = onSnapshot(activeSessionsQuery, (snapshot) => {
+      const sessions = [];
+      console.log('Active sessions snapshot received, count:', snapshot.size);
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        console.log('Processing active session:', { 
+          id: doc.id,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          status: data.status,
+          classData: data.classData,
+          hasClassData: !!data.classData,
+          hasStudentProgress: !!data.studentProgress
+        });
+        sessions.push({ id: doc.id, ...data });
+      });
+      
+      console.log('Setting active sessions:', sessions.length);
+      setActiveSessions(sessions);
+    }, (error) => {
+      console.error('Error listening to active sessions:', error);
+      setError(error.message);
+    });
 
     const fetchDashboardData = async () => {
       const now = new Date();
@@ -144,6 +185,7 @@ const TeacherDashboard = () => {
         let weeklyHours = 0;
         let completedSessions = 0;
         let activeSessions = 0;
+        const activeSessionsList = [];
 
         // Helper function to parse various time formats
         const parseTime = (timeStr, baseDate = new Date()) => {
@@ -203,6 +245,7 @@ const TeacherDashboard = () => {
         // Process each session
         sessionsSnap.forEach(doc => {
           const session = doc.data();
+          session.id = doc.id;
           
           try {
             // Get base date from session or use current date
@@ -215,10 +258,38 @@ const TeacherDashboard = () => {
             
             // Get end time
             let endTime = null;
-            if (session.status === 'active') {
-              endTime = new Date();
-              activeSessions++;
-            } else {
+            
+            // Check if session is truly active (has start time but no end time)
+            const isActive = session.startTime && !session.endTime && session.status === 'active';
+            
+            if (isActive) {
+              endTime = new Date(); // Use current time for active sessions
+              // Only count as active if it's less than 24 hours old
+              const sessionAge = (endTime - startTime) / (1000 * 60 * 60); // in hours
+              if (sessionAge <= 24) {
+                activeSessions++;
+                // Only add to activeSessionsList if we don't already have a session for this class
+                const existingSessionIndex = activeSessionsList.findIndex(s => s.classId === session.classId);
+                if (existingSessionIndex === -1) {
+                  activeSessionsList.push(session);
+                } else {
+                  // If we have an existing session for this class, keep the most recent one
+                  const existingSession = activeSessionsList[existingSessionIndex];
+                  const existingStartTime = parseTime(existingSession.startTime, baseDate);
+                  if (startTime > existingStartTime) {
+                    activeSessionsList[existingSessionIndex] = session;
+                  }
+                }
+              } else {
+                // Auto-end sessions older than 24 hours
+                const sessionRef = doc(db, 'sessions', session.id);
+                updateDoc(sessionRef, {
+                  status: 'completed',
+                  endTime: new Date(),
+                  endedAutomatically: true
+                }).catch(error => console.error('Error auto-ending old session:', error));
+              }
+            } else if (session.status === 'completed') {
               endTime = parseTime(session.endTime, baseDate);
             }
 
@@ -226,6 +297,7 @@ const TeacherDashboard = () => {
             console.log('Processed times:', {
               id: doc.id,
               status: session.status,
+              isActive,
               startTime: startTime?.toISOString(),
               endTime: endTime?.toISOString(),
               rawStart: session.startTime,
@@ -236,9 +308,9 @@ const TeacherDashboard = () => {
             if (startTime && endTime) {
               const duration = (endTime - startTime) / (1000 * 60 * 60); // Convert to hours
 
-              // Only count positive durations less than 24 hours
-              if (duration > 0 && duration < 24) {
-                if (session.status === 'completed' || session.status === 'active') {
+              // Include all positive durations for active sessions, but filter suspicious completed sessions
+              if (duration > 0 && (isActive || duration < 24)) {
+                if (session.status === 'completed' || isActive) {
                   completedSessions++;
                   totalHours += duration;
                   
@@ -249,19 +321,13 @@ const TeacherDashboard = () => {
                   console.log('Added duration:', {
                     id: doc.id,
                     status: session.status,
+                    isActive,
                     duration: duration.toFixed(2),
                     start: startTime.toISOString(),
                     end: endTime.toISOString(),
                     isThisWeek: startTime >= oneWeekAgo
                   });
                 }
-              } else if (duration >= 24) {
-                console.warn('Skipping suspiciously long session:', {
-                  id: doc.id,
-                  duration: duration.toFixed(2),
-                  start: startTime.toISOString(),
-                  end: endTime.toISOString()
-                });
               }
             }
           } catch (error) {
@@ -277,13 +343,24 @@ const TeacherDashboard = () => {
         totalHours = Math.round(totalHours * 10) / 10;
         weeklyHours = Math.round(weeklyHours * 10) / 10;
 
+        setTeachingStats({
+          totalHours,
+          weeklyHours,
+          completedSessions,
+          activeSessions,
+          averageHoursPerSession: (totalHours / (completedSessions || 1)).toFixed(2)
+        });
+        
         console.log('Teaching hours summary:', {
           total: totalHours,
           weekly: weeklyHours,
           completedSessions,
-          activeSessions,
-          averageHoursPerSession: completedSessions > 0 ? (totalHours / completedSessions).toFixed(2) : 0
+          activeSessions: activeSessionsList.length,
+          averageHoursPerSession: (totalHours / (completedSessions || 1)).toFixed(2)
         });
+
+        // Update active sessions state
+        setActiveSessions(activeSessionsList);
 
         // Process today's classes using schedules
         const todayClasses = [];
@@ -405,8 +482,11 @@ const TeacherDashboard = () => {
       setActiveSessions(sessions);
     });
 
-    return () => unsubscribe();
-  }, [currentUser]);
+    return () => {
+      unsubscribeActiveSessions();
+      unsubscribe();
+    };
+  }, [currentUser, navigate]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -494,6 +574,31 @@ const TeacherDashboard = () => {
     navigate(`/teaching/session/${sessionId}`);
   };
 
+  const renderActiveSessions = () => {
+    console.log('Rendering active sessions section, count:', activeSessions.length);
+    
+    if (activeSessions.length === 0) {
+      return (
+        <Typography variant="body1" color="text.secondary" align="center" py={3}>
+          No active sessions
+        </Typography>
+      );
+    }
+
+    return activeSessions.map(session => {
+      console.log('Rendering session card for:', {
+        id: session.id,
+        hasClassData: !!session.classData,
+        status: session.status
+      });
+      return (
+        <Grid item xs={12} key={session.id}>
+          <ActiveSessionCard session={session} />
+        </Grid>
+      );
+    });
+  };
+
   return (
     <Box
       component="main"
@@ -539,6 +644,18 @@ const TeacherDashboard = () => {
               needAttention={studentProgress.needAttention}
               averageProgress={dashboardStats.averageProgress}
             />
+          </Grid>
+
+          {/* Active Sessions */}
+          <Grid item xs={12}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Active Teaching Sessions
+              </Typography>
+              <Grid container spacing={2}>
+                {renderActiveSessions()}
+              </Grid>
+            </Box>
           </Grid>
 
           {/* Active Session */}

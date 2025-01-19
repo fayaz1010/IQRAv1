@@ -92,10 +92,53 @@ export function SessionProvider({ children }) {
     }
   };
 
+  // Check for existing active session
+  const checkExistingSession = async (teacherId, classId) => {
+    try {
+      const sessionsQuery = query(
+        collection(db, 'sessions'),
+        where('teacherId', '==', teacherId),
+        where('status', '==', 'active'),
+        where('endTime', '==', null)
+      );
+
+      const snapshot = await getDocs(sessionsQuery);
+      let existingSession = null;
+
+      snapshot.forEach(doc => {
+        const session = { id: doc.id, ...doc.data() };
+        if (session.classId === classId) {
+          existingSession = session;
+        } else {
+          // Auto-end other active sessions
+          updateDoc(doc.ref, {
+            status: 'completed',
+            endTime: new Date(),
+            endedAutomatically: true
+          });
+        }
+      });
+
+      return existingSession;
+    } catch (error) {
+      console.error('Error checking existing sessions:', error);
+      throw error;
+    }
+  };
+
   // Start a new teaching session
   const startSession = async (classId, bookId, initialPage = 1) => {
     try {
       setError(null);
+      
+      // Check for existing active session
+      const existingSession = await checkExistingSession(currentUser.uid, classId);
+      if (existingSession) {
+        console.log('Found existing active session:', existingSession);
+        setActiveSession(existingSession);
+        return existingSession;
+      }
+
       // Load class and course data first
       const classData = await loadClassData(classId);
       
@@ -149,13 +192,20 @@ export function SessionProvider({ children }) {
       const sessionData = {
         teacherId: currentUser.uid,
         classId,
-        date: new Date().toISOString(),
-        startTime: new Date().toLocaleTimeString(),
+        startTime: new Date(),  // Firestore will automatically convert this to Timestamp
         book: bookId,
         startPage: initialPage,
         currentPage: initialPage,
         studentProgress,
         status: 'active',
+        endTime: null,  // Explicitly set to null for active sessions
+        studentIds: classData.studentIds || [], // Add this for student queries
+        classData: {  // Include essential class data
+          course: classData.course,
+          name: classData.name,
+          students: classData.students,
+          schedule: classData.schedule
+        },
         ...(meetData && { meet: meetData }) // Only include meet data if available
       };
 
@@ -167,8 +217,7 @@ export function SessionProvider({ children }) {
 
       const session = {
         id: sessionRef.id,
-        ...sessionData,
-        classData
+        ...sessionData
       };
 
       console.log('Session created successfully:', session);
@@ -277,7 +326,7 @@ export function SessionProvider({ children }) {
       // Update session with end time, status and feedback
       await updateDoc(sessionRef, {
         status: 'completed',
-        endTime: new Date().toISOString(),
+        endTime: new Date(),  // Firestore will automatically convert this to Timestamp
         sessionId,
         endPage: activeSession.currentPage,
         feedback: {
@@ -320,7 +369,7 @@ export function SessionProvider({ children }) {
           // Add session assessment with page-specific notes
           updatedProgress[studentId].assessments.push({
             sessionId,
-            date: new Date().toISOString(),
+            date: new Date(),  // Firestore will automatically convert this to Timestamp
             book: activeSession.book,
             startPage: activeSession.startPage,
             endPage: activeSession.currentPage,
@@ -334,7 +383,7 @@ export function SessionProvider({ children }) {
           // Add session reference
           updatedProgress[studentId].sessions.push({
             sessionId,
-            date: new Date().toISOString(),
+            date: new Date(),  // Firestore will automatically convert this to Timestamp
             book: activeSession.book,
             startPage: activeSession.startPage,
             endPage: activeSession.currentPage
