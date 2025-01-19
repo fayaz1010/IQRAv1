@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -44,6 +44,7 @@ const TeachingSession = () => {
   const theme = useTheme();
   const { classId } = useParams();
   const navigate = useNavigate();
+  const { state } = useLocation();
   const { currentUser } = useAuth();
   const {
     activeSession,
@@ -65,11 +66,13 @@ const TeachingSession = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [sessionTimer, setSessionTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(true);
+  const [currentPage, setCurrentPage] = useState(state?.currentPage || 1);
 
   useEffect(() => {
     const initSession = async () => {
       if (!activeSession && !sessionLoading) {
         try {
+          // Start or resume session with classId
           await startSession(classId);
           setIsInitializing(false);
         } catch (error) {
@@ -94,6 +97,12 @@ const TeachingSession = () => {
     }
     return () => clearInterval(interval);
   }, [isTimerRunning, isInitializing]);
+
+  useEffect(() => {
+    if (activeSession?.currentPage) {
+      setCurrentPage(activeSession.currentPage);
+    }
+  }, [activeSession]);
 
   const formatTime = (seconds) => {
     const hours = Math.floor(seconds / 3600);
@@ -233,7 +242,7 @@ const TeachingSession = () => {
             }}
           >
             <List>
-              {activeSession?.students.map((student) => (
+              {activeSession?.classData?.students?.map((student) => (
                 <ListItem
                   key={student.id}
                   button
@@ -289,7 +298,7 @@ const TeachingSession = () => {
             {selectedStudent ? (
               <IqraBookViewer
                 bookId={activeSession.bookId}
-                currentPage={selectedStudent.currentPage}
+                currentPage={currentPage}
                 onPageChange={(page) =>
                   updateStudentProgress(selectedStudent.id, { currentPage: page })
                 }

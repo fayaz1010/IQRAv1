@@ -197,7 +197,9 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <Suspense fallback={<LoadingScreen />}>
-                <TeacherDashboard />
+                <SessionProvider>
+                  <TeacherDashboard />
+                </SessionProvider>
               </Suspense>
             </ProtectedRoute>
           }

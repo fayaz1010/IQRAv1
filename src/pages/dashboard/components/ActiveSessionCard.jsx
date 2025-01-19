@@ -4,71 +4,129 @@ import {
   Paper,
   Typography,
   Button,
-  Chip,
-  IconButton,
-  Tooltip,
   Grid,
 } from '@mui/material';
 import {
-  VideocamOutlined as VideocamIcon,
+  PlayArrow as PlayArrowIcon,
   Book as BookIcon,
   Group as GroupIcon,
-  Timer as TimerIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useSession } from '../../../features/iqra/contexts/SessionContext';
 import { formatDistanceToNow } from 'date-fns';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../../config/firebase';
 
 const ActiveSessionCard = ({ session }) => {
   const navigate = useNavigate();
+  const { startSession } = useSession();
 
-  if (!session) return null;
-
-  console.log('Rendering ActiveSessionCard:', {
-    id: session.id,
-    hasClassData: !!session.classData,
-    classDataDetails: session.classData,
-    startTime: session.startTime,
-    hasStudentProgress: !!session.studentProgress
+  // Add debug logging for incoming session data
+  console.log('ActiveSessionCard received session:', {
+    id: session?.id,
+    startTime: session?.startTime,
+    classData: session?.classData,
+    book: session?.book,
+    currentPage: session?.currentPage
   });
 
-  const getStartTime = (startTime) => {
-    if (!startTime) return new Date();
+  // Format the session duration
+  const formatSessionDuration = () => {
+    if (!session?.startTime) {
+      console.log('No startTime in session:', session);
+      return 'Just started';
+    }
     
     try {
+      let startTime;
+      
       // Handle Firestore Timestamp
-      if (typeof startTime.toDate === 'function') {
-        return startTime.toDate();
-      }
+      if (session.startTime && typeof session.startTime.toDate === 'function') {
+        startTime = session.startTime.toDate();
+      } 
       // Handle ISO string
-      if (typeof startTime === 'string') {
-        return new Date(startTime);
-      }
+      else if (typeof session.startTime === 'string') {
+        startTime = new Date(session.startTime);
+      } 
       // Handle Date object
-      if (startTime instanceof Date) {
-        return startTime;
+      else if (session.startTime instanceof Date) {
+        startTime = session.startTime;
+      } 
+      // Handle seconds timestamp
+      else if (typeof session.startTime === 'number') {
+        startTime = new Date(session.startTime * 1000);
       }
-      // Default to current time if invalid
-      return new Date();
+      else {
+        console.error('Unhandled startTime format:', session.startTime);
+        return 'Time unknown';
+      }
+
+      if (!startTime || isNaN(startTime.getTime())) {
+        console.error('Invalid date value:', startTime);
+        return 'Time unknown';
+      }
+
+      // Add logging to debug the time calculation
+      console.log('Calculating time elapsed:', {
+        startTime,
+        now: new Date(),
+        sessionData: session
+      });
+
+      return formatDistanceToNow(startTime, { addSuffix: true, includeSeconds: true });
     } catch (error) {
-      console.error('Error parsing start time:', error);
-      return new Date();
+      console.error('Error formatting session duration:', error, session.startTime);
+      return 'Time unknown';
     }
   };
 
-  const {
-    id,
-    classData,
-    startTime,
-    currentPage,
-    book,
-    studentProgress,
-    meet
-  } = session;
-
-  const startedAgo = formatDistanceToNow(getStartTime(startTime), { addSuffix: true });
-
-  const totalStudents = classData?.students?.length || 0;
+  // Get session stats with proper null checks and debug logging
+  const classData = session?.classData || {};
+  const studentProgress = session?.studentProgress || {};
+  const totalStudents = classData?.studentIds?.length || 0;
   const activeStudents = Object.keys(studentProgress || {}).length;
+  const currentPage = session?.currentPage || 1;
+  const book = session?.book || 'Iqra Book 1';
+  const className = classData?.name || 'Untitled Class';
+
+  console.log('ActiveSessionCard computed values:', {
+    className,
+    totalStudents,
+    activeStudents,
+    currentPage,
+    book
+  });
+
+  // Handle null or invalid session data
+  if (!session || !session.classId) {
+    console.log('Invalid session data:', session);
+    return null;
+  }
+
+  const handleResumeSession = async () => {
+    try {
+      // First check if the session is still active
+      const sessionRef = doc(db, 'sessions', session.id);
+      const sessionDoc = await getDoc(sessionRef);
+      
+      if (!sessionDoc.exists()) {
+        console.error('Session no longer exists');
+        return;
+      }
+      
+      const sessionData = sessionDoc.data();
+      if (sessionData.status !== 'active' || sessionData.endTime) {
+        console.error('Session is no longer active');
+        return;
+      }
+
+      // Resume the session with the current book
+      await startSession(session.classId, session.book || 'Iqra Book 1');
+      navigate(`/classes/iqra`);
+    } catch (error) {
+      console.error('Error resuming session:', error);
+    }
+  };
 
   return (
     <Paper 
@@ -79,67 +137,53 @@ const ActiveSessionCard = ({ session }) => {
         position: 'relative',
         overflow: 'hidden'
       }}
+      tabIndex={-1}
     >
-      {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6">Active Teaching Session</Typography>
-        <Chip 
-          label={startedAgo}
-          icon={<TimerIcon />}
-          sx={{ 
-            bgcolor: 'rgba(255,255,255,0.2)',
-            color: 'white',
-            '& .MuiChip-icon': { color: 'white' }
-          }}
-        />
-      </Box>
-
-      {/* Class Info */}
-      <Box mb={2}>
-        <Typography variant="h5" gutterBottom>
-          {classData?.course?.name || 'Class Session'}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          {className}
         </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <BookIcon />
-              <Typography>
-                Page {currentPage} • {book}
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Box display="flex" alignItems="center" gap={1}>
-              <GroupIcon />
-              <Typography>
-                {activeStudents}/{totalStudents} Students Active
-              </Typography>
-            </Box>
-          </Grid>
-        </Grid>
+        <Typography variant="body2" color="inherit" sx={{ opacity: 0.9 }}>
+          {formatSessionDuration()}
+        </Typography>
       </Box>
 
-      {/* Actions */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <BookIcon fontSize="small" />
+            <Typography variant="body2">
+              {book} • Page {currentPage}
+            </Typography>
+          </Box>
+        </Grid>
+        <Grid item xs={12}>
+          <Box display="flex" alignItems="center" gap={1}>
+            <GroupIcon fontSize="small" />
+            <Typography variant="body2">
+              {activeStudents} of {totalStudents} Students Present
+            </Typography>
+          </Box>
+        </Grid>
+      </Grid>
+
       <Box display="flex" gap={2}>
         <Button
           variant="contained"
           color="primary"
-          onClick={() => navigate(`/teaching/session/${id}`)}
-          sx={{ flex: 1 }}
+          startIcon={<PlayArrowIcon />}
+          onClick={handleResumeSession}
+          sx={{
+            boxShadow: 2,
+            '&:hover': {
+              boxShadow: 4
+            }
+          }}
+          fullWidth
+          tabIndex={0}
         >
-          Resume Teaching
+          Resume
         </Button>
-        {meet?.link && (
-          <Tooltip title="Join Video Call">
-            <IconButton
-              color="primary"
-              onClick={() => window.open(meet.link, '_blank')}
-              sx={{ bgcolor: 'background.paper' }}
-            >
-              <VideocamIcon />
-            </IconButton>
-          </Tooltip>
-        )}
       </Box>
     </Paper>
   );

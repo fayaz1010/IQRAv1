@@ -413,18 +413,23 @@ service cloud.firestore {
 
     // Drawings collection
     match /drawings/{drawingId} {
-      allow read: if isAuthenticated() &&
-        (isTeacherOfClass(resource.data.classId) || 
-         isStudentInClass(resource.data.classId) ||
-         (isStudent() && resource.data.studentId == request.auth.uid));
-      
-      allow create, update: if isAuthenticated() &&
-        (isTeacherOfClass(request.resource.data.classId) || 
-         (isStudent() && request.resource.data.studentId == request.auth.uid));
-      
-      allow delete: if isAuthenticated() &&
-        (isTeacherOfClass(resource.data.classId) || 
-         (isStudent() && resource.data.studentId == request.auth.uid));
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        isStudent() ||
+        isParent()
+      );
+
+      allow create, update: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && request.resource.data.studentId == request.auth.uid)
+      );
+
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher()
+      );
     }
 
     // Course materials collection

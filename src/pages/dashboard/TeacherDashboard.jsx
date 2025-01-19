@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useEffect } from 'react';
 import { useTheme } from '@mui/material/styles';
-import { Container, Grid, Box, Typography } from '@mui/material';
+import { Container, Grid, Box, Typography, Button, CircularProgress, Alert } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
@@ -39,7 +39,7 @@ const TeacherDashboard = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { activeSession } = useSession();
+  const { activeSession, startSession, closeAllSessions } = useSession();
   
   // State for dashboard data
   const [activeSessions, setActiveSessions] = useState([]);
@@ -75,45 +75,149 @@ const TeacherDashboard = () => {
     activeSessions: 0,
     averageHoursPerSession: 0
   });
+  const [isClosingAll, setIsClosingAll] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Listen for active sessions
+    const sessionsRef = collection(db, 'sessions');
+    const q = query(
+      sessionsRef,
+      where('teacherId', '==', currentUser.uid),
+      where('status', '==', 'active')
+    );
+
+    console.log('Setting up sessions listener...');
+    
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      try {
+        console.log('Received sessions update, docs count:', snapshot.docs.length);
+        const sessionsData = [];
+        
+        for (const document of snapshot.docs) {
+          const data = document.data();
+          
+          // Skip if it's not truly active
+          if (data.status !== 'active' || data.endTime !== null) {
+            console.log('Skipping non-active session:', document.id);
+            continue;
+          }
+
+          console.log('Processing active session:', document.id, data);
+          
+          // Create base session data
+          const sessionData = {
+            id: document.id,
+            ...data,
+            startTime: data.startTime || Timestamp.now(),
+            book: data.book || 'Untitled Book',
+            currentPage: data.currentPage || 1,
+            classData: null // Initialize classData
+          };
+
+          // Fetch class data if it exists
+          if (sessionData.classId) {
+            try {
+              const classRef = doc(db, 'classes', sessionData.classId);
+              const classDoc = await getDoc(classRef);
+              
+              if (classDoc.exists()) {
+                const classData = classDoc.data();
+                // Set class data properly
+                sessionData.classData = {
+                  id: classDoc.id,
+                  name: classData.name || 'Untitled Class',
+                  studentIds: classData.studentIds || [],
+                  ...classData
+                };
+
+                console.log('Class data fetched:', {
+                  sessionId: sessionData.id,
+                  className: sessionData.classData.name,
+                  studentIds: sessionData.classData.studentIds
+                });
+                
+                // Fetch course data if it exists
+                if (classData.courseId) {
+                  const courseRef = doc(db, 'courses', classData.courseId);
+                  const courseDoc = await getDoc(courseRef);
+                  if (courseDoc.exists()) {
+                    sessionData.classData.course = {
+                      id: courseDoc.id,
+                      ...courseDoc.data()
+                    };
+                  }
+                }
+                
+                // Fetch students data
+                if (classData.studentIds?.length > 0) {
+                  const studentPromises = classData.studentIds.map(async studentId => {
+                    try {
+                      const studentRef = doc(db, 'users', studentId);
+                      const studentDoc = await getDoc(studentRef);
+                      if (studentDoc.exists()) {
+                        return {
+                          id: studentId,
+                          ...studentDoc.data()
+                        };
+                      }
+                    } catch (error) {
+                      console.error('Error fetching student:', studentId, error);
+                    }
+                    return null;
+                  });
+                  
+                  const studentResults = await Promise.all(studentPromises);
+                  sessionData.classData.students = studentResults.filter(student => student !== null);
+                }
+              }
+            } catch (error) {
+              console.error('Error fetching class data:', error);
+              // Don't fail the whole operation if class data fetch fails
+              sessionData.classData = {
+                name: 'Untitled Class',
+                studentIds: [],
+                error: error.message
+              };
+            }
+          }
+
+          console.log('Adding processed session to list:', {
+            id: sessionData.id,
+            hasClassData: !!sessionData.classData,
+            className: sessionData.classData?.name,
+            startTime: sessionData.startTime
+          });
+
+          sessionsData.push(sessionData);
+        }
+
+        console.log('Setting active sessions:', sessionsData.length);
+        setActiveSessions(sessionsData);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error processing sessions:', error);
+        setError(error.message);
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error('Sessions listener error:', error);
+      setError(error.message);
+      setLoading(false);
+    });
+
+    return () => {
+      console.log('Cleaning up sessions listener');
+      unsubscribe();
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) {
       navigate('/login');
       return;
     }
-
-    // Subscribe to active sessions
-    const activeSessionsQuery = query(
-      collection(db, 'sessions'),
-      where('teacherId', '==', currentUser.uid),
-      where('status', '==', 'active'),
-      where('endTime', '==', null)
-    );
-
-    const unsubscribeActiveSessions = onSnapshot(activeSessionsQuery, (snapshot) => {
-      const sessions = [];
-      console.log('Active sessions snapshot received, count:', snapshot.size);
-      
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        console.log('Processing active session:', { 
-          id: doc.id,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          status: data.status,
-          classData: data.classData,
-          hasClassData: !!data.classData,
-          hasStudentProgress: !!data.studentProgress
-        });
-        sessions.push({ id: doc.id, ...data });
-      });
-      
-      console.log('Setting active sessions:', sessions.length);
-      setActiveSessions(sessions);
-    }, (error) => {
-      console.error('Error listening to active sessions:', error);
-      setError(error.message);
-    });
 
     const fetchDashboardData = async () => {
       const now = new Date();
@@ -145,12 +249,10 @@ const TeacherDashboard = () => {
         // Calculate weekly scheduled hours
         let weeklyScheduledHours = 0;
         schedulesData.forEach(schedule => {
-          // For each day in the schedule
-          if (schedule.daysOfWeek && schedule.duration) {
-            const daysPerWeek = schedule.daysOfWeek.length;
-            const durationHours = schedule.duration / 60; // Convert minutes to hours
-            weeklyScheduledHours += daysPerWeek * durationHours;
-          }
+          // Each schedule contributes: number of weeks × classes per week
+          const weeksInTerm = 12; // Assuming 12-week term
+          const classesPerWeek = schedule.daysOfWeek?.length || 0;
+          weeklyScheduledHours += weeksInTerm * classesPerWeek;
         });
 
         console.log('Weekly scheduled hours:', {
@@ -483,12 +585,16 @@ const TeacherDashboard = () => {
     });
 
     return () => {
-      unsubscribeActiveSessions();
       unsubscribe();
     };
   }, [currentUser, navigate]);
 
   useEffect(() => {
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+
     const fetchStats = async () => {
       try {
         setLoading(true);
@@ -566,12 +672,53 @@ const TeacherDashboard = () => {
     }
   }, [currentUser]);
 
-  const handleStartSession = (classId) => {
-    navigate(`/teaching/session/${classId}`);
+  const handleStartSession = async (classId) => {
+    try {
+      // Get class data to find the first book
+      const classRef = doc(db, 'classes', classId);
+      const classDoc = await getDoc(classRef);
+      if (!classDoc.exists()) {
+        console.error('Class not found');
+        return;
+      }
+      
+      const classData = classDoc.data();
+      const courseRef = doc(db, 'courses', classData.courseId);
+      const courseDoc = await getDoc(courseRef);
+      if (!courseDoc.exists()) {
+        console.error('Course not found');
+        return;
+      }
+      
+      const courseData = courseDoc.data();
+      const firstBook = courseData.iqraBooks?.[0];
+      
+      if (!firstBook) {
+        console.error('No books found in course');
+        return;
+      }
+
+      await startSession(classId, firstBook);
+      navigate(`/classes/iqra`);
+    } catch (error) {
+      console.error('Error starting session:', error);
+    }
   };
 
-  const handleResumeSession = (sessionId) => {
-    navigate(`/teaching/session/${sessionId}`);
+  // Use the same handler for both start and resume
+  const handleResumeSession = handleStartSession;
+
+  const handleCloseAllSessions = async () => {
+    try {
+      setIsClosingAll(true);
+      const closedCount = await closeAllSessions();
+      console.log(`Successfully closed ${closedCount} sessions`);
+    } catch (error) {
+      console.error('Failed to close all sessions:', error);
+      setError('Failed to close all sessions. Please try again.');
+    } finally {
+      setIsClosingAll(false);
+    }
   };
 
   const renderActiveSessions = () => {
@@ -616,17 +763,38 @@ const TeacherDashboard = () => {
             <TeachingStats stats={dashboardStats} />
           </Grid>
 
-          {/* Quick Actions and Today's Overview */}
+          {/* Quick Actions */}
           <Grid item xs={12} md={4}>
             <QuickActions todayStats={dashboardStats} />
           </Grid>
 
-          {/* Live Teaching Panel */}
+          {/* Active Teaching Sessions */}
           <Grid item xs={12} md={8}>
-            <TeachingPanel
-              activeSessions={activeSessions}
-              onResumeSession={handleResumeSession}
-            />
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Active Teaching Sessions
+                </Typography>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  onClick={handleCloseAllSessions}
+                  disabled={isClosingAll || activeSessions.length === 0}
+                >
+                  {isClosingAll ? (
+                    <>
+                      <CircularProgress size={20} sx={{ mr: 1 }} />
+                      Closing All Sessions...
+                    </>
+                  ) : (
+                    'Close All Sessions'
+                  )}
+                </Button>
+              </Box>
+              <Grid container spacing={2}>
+                {renderActiveSessions()}
+              </Grid>
+            </Box>
           </Grid>
 
           {/* Upcoming Classes */}
@@ -644,31 +812,6 @@ const TeacherDashboard = () => {
               needAttention={studentProgress.needAttention}
               averageProgress={dashboardStats.averageProgress}
             />
-          </Grid>
-
-          {/* Active Sessions */}
-          <Grid item xs={12}>
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Active Teaching Sessions
-              </Typography>
-              <Grid container spacing={2}>
-                {renderActiveSessions()}
-              </Grid>
-            </Box>
-          </Grid>
-
-          {/* Active Session */}
-          <Grid item xs={12}>
-            {activeSession ? (
-              <ActiveSessionCard session={activeSession} />
-            ) : (
-              <Typography variant="body1" color="text.secondary" textAlign="center" py={4}>
-                No active teaching session.
-                <br />
-                Start a new session from your schedule or quick actions.
-              </Typography>
-            )}
           </Grid>
 
           {/* Stats */}

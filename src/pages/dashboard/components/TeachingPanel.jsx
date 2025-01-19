@@ -99,9 +99,10 @@ const TeachingPanel = ({ activeSessions, onResumeSession }) => {
                   variant="contained"
                   color="primary"
                   startIcon={<ResumeIcon />}
-                  onClick={() => onResumeSession(session.id)}
+                  onClick={() => onResumeSession(session.classId)}
+                  size="small"
                 >
-                  Resume Session
+                  Resume
                 </Button>
               </Box>
 
