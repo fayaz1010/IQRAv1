@@ -27,10 +27,16 @@ export const createSchedule = async (scheduleData) => {
 
     // Ensure all dates are properly formatted
     const normalizedStartDate = startOfDay(new Date(startDate));
+    
+    // Validate and normalize time slots (already in HH:mm format)
     const normalizedTimeSlots = {};
     for (const [day, time] of Object.entries(timeSlots)) {
-      const timeDate = new Date(time);
-      normalizedTimeSlots[day] = format(timeDate, "HH:mm");
+      // Validate time format
+      const [hours, minutes] = time.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+        throw new Error(`Invalid time format for day ${day}: ${time}`);
+      }
+      normalizedTimeSlots[day] = time; // Keep as HH:mm format
     }
 
     // Create schedule document
@@ -69,10 +75,10 @@ export const createSchedule = async (scheduleData) => {
       
       for (const day of daysOfWeek) {
         // Create session date by combining the week date with time slot
-        const [hours, minutes] = normalizedTimeSlots[day].split(':');
+        const [hours, minutes] = normalizedTimeSlots[day].split(':').map(Number);
         const sessionDate = new Date(weekStartDate);
         sessionDate.setDate(sessionDate.getDate() + (Number(day) % 7));
-        sessionDate.setHours(Number(hours), Number(minutes), 0, 0);
+        sessionDate.setHours(hours, minutes, 0, 0);
         
         const sessionDateStr = format(sessionDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
         const sessionEndDate = addMinutes(sessionDate, duration);
@@ -166,10 +172,32 @@ export const getSchedules = async (userId, userRole) => {
         scheduleData.startDate = parseISO(scheduleData.startDate);
       }
       
-      // Keep time slots as HH:mm strings
+      // Normalize time slots to HH:mm format
       const timeSlots = {};
       for (const [day, time] of Object.entries(scheduleData.timeSlots || {})) {
-        timeSlots[day] = time;  // Keep as HH:mm string
+        if (typeof time === 'string') {
+          if (time.includes('T')) {
+            // Old format: ISO string
+            try {
+              const date = new Date(time);
+              timeSlots[day] = format(date, 'HH:mm');
+            } catch (error) {
+              console.error('Error parsing time slot:', error);
+              timeSlots[day] = '00:00';
+            }
+          } else if (time.includes(':')) {
+            // New format: HH:mm
+            timeSlots[day] = time;
+          } else {
+            console.error('Invalid time format:', time);
+            timeSlots[day] = '00:00';
+          }
+        } else if (time instanceof Date) {
+          timeSlots[day] = format(time, 'HH:mm');
+        } else {
+          console.error('Invalid time type:', typeof time);
+          timeSlots[day] = '00:00';
+        }
       }
       scheduleData.timeSlots = timeSlots;
 
@@ -205,8 +233,12 @@ export const updateSchedule = async (scheduleId, updates) => {
     if (updates.timeSlots) {
       const normalizedTimeSlots = {};
       for (const [day, time] of Object.entries(updates.timeSlots)) {
-        const timeDate = new Date(time);
-        normalizedTimeSlots[day] = format(timeDate, "HH:mm");
+        // Validate time format
+        const [hours, minutes] = time.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+          throw new Error(`Invalid time format for day ${day}: ${time}`);
+        }
+        normalizedTimeSlots[day] = time; // Keep as HH:mm format
       }
       updates.timeSlots = normalizedTimeSlots;
     }
@@ -252,9 +284,9 @@ export const updateSingleSession = async (scheduleId, dayIndex, updates) => {
 
     // Update the session time if provided
     if (updates.time) {
-      const [hours, minutes] = updates.time.split(':');
+      const [hours, minutes] = updates.time.split(':').map(Number);
       const sessionDate = parseISO(sessionData.date);
-      sessionDate.setHours(Number(hours), Number(minutes), 0, 0);
+      sessionDate.setHours(hours, minutes, 0, 0);
       const sessionEndDate = addMinutes(sessionDate, scheduleData.duration);
       
       updates.date = format(sessionDate, "yyyy-MM-dd'T'HH:mm:ssXXX");

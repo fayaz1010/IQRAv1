@@ -55,7 +55,8 @@ const Dashboard = () => {
     const sessionsQuery = query(
       collection(db, 'sessions'),
       where('teacherId', '==', currentUser.uid),
-      where('status', '==', 'active')
+      where('status', '==', 'active'),
+      where('endTime', '==', null)  // Only truly active sessions
     );
 
     // Query for recurring classes
@@ -115,8 +116,14 @@ const Dashboard = () => {
     const unsubscribeSessions = onSnapshot(sessionsQuery, (snapshot) => {
       const sessions = [];
       snapshot.forEach((doc) => {
-        sessions.push({ id: doc.id, ...doc.data() });
+        const data = doc.data();
+        // Only include sessions that are actually active (have a start time but no end time)
+        if (data.startTime && !data.endTime) {
+          sessions.push({ id: doc.id, ...data });
+          console.log('Found active session:', { id: doc.id, ...data });
+        }
       });
+      console.log('Teacher Dashboard active sessions:', sessions);
       setActiveSessions(sessions);
     });
 

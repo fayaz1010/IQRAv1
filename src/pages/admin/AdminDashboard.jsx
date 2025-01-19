@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Box, Container, Grid, Paper, Typography } from '@mui/material';
+import { Box, Container, Grid, Paper, Typography, Button } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardStats from '../../components/dashboard/DashboardStats';
 import TeacherApproval from '../../components/admin/TeacherApproval';
+import { Link as RouterLink } from 'react-router-dom';
+import { LibraryBooks as BooksIcon } from '@mui/icons-material';
 
 // Components for each section
 const SystemOverview = () => (
@@ -26,6 +28,22 @@ const SystemHealth = () => (
   </Paper>
 );
 
+const QuickActions = () => (
+  <Paper sx={{ p: 3, height: '100%' }}>
+    <Typography variant="h6" gutterBottom>Quick Actions</Typography>
+    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      <Button
+        component={RouterLink}
+        to="/admin/books"
+        variant="contained"
+        startIcon={<BooksIcon />}
+      >
+        Manage Books
+      </Button>
+    </Box>
+  </Paper>
+);
+
 const AdminDashboard = () => {
   const { currentUser } = useAuth();
 
@@ -41,6 +59,10 @@ const AdminDashboard = () => {
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <DashboardStats isAdmin />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <QuickActions />
           </Grid>
           
           <Grid item xs={12} md={6}>

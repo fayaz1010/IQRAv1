@@ -20,7 +20,7 @@ import {
 } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DateTimePicker, TimePicker } from '@mui/x-date-pickers';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../../../config/firebase';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { createSchedule, updateSchedule } from '../../../../services/scheduleService';
@@ -156,18 +156,26 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
       setLoading(true);
       setError('');
 
-      // Convert time slots to Date objects for the schedule service
-      const timeSlots = {};
+      // Validate time slots
       for (const [day, time] of Object.entries(formData.timeSlots)) {
-        const [hours, minutes] = time.split(':');
-        const timeDate = addDays(startOfDay(formData.startDate), Number(day));
-        timeDate.setHours(Number(hours), Number(minutes), 0, 0);
-        timeSlots[day] = timeDate;
+        const [hours, minutes] = time.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+          throw new Error(`Invalid time format for ${weekDays.find(d => d.value === Number(day)).label}`);
+        }
       }
 
       const scheduleData = {
-        ...formData,
-        timeSlots
+        teacherId: currentUser.uid,
+        classId: formData.classId,
+        className: classes.find(cls => cls.id === formData.classId)?.name || 'Untitled Class',
+        startDate: formData.startDate,
+        recurrencePattern: formData.recurrencePattern,
+        daysOfWeek: formData.daysOfWeek,
+        duration: formData.duration,
+        timeSlots: formData.timeSlots, // Store as HH:mm strings
+        status: 'active',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
       };
 
       if (isEditing) {
@@ -179,7 +187,7 @@ const SchedulingWizard = ({ onComplete, initialData, isEditing }) => {
       onComplete();
     } catch (error) {
       console.error('Error saving schedule:', error);
-      setError('Failed to save schedule. Please try again.');
+      setError(error.message || 'Failed to save schedule. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -31,27 +31,45 @@ export function AuthProvider({ children }) {
           console.log('Auth state changed - user found:', user.uid);
           // Get user data from Firestore
           const userDoc = await getDoc(doc(db, 'users', user.uid));
+          
           if (userDoc.exists() && mounted) {
             const userData = userDoc.data();
-            console.log('User data found:', userData.role);
+            console.log('User data found:', userData);
             
             // Get the user's ID token result to check custom claims
             const tokenResult = await getIdTokenResult(user, true);
-            const role = tokenResult.claims.role || userData.role || 'student';
+            
+            // Determine the role - prioritize Firestore role over claims
+            const role = userData.role || tokenResult.claims.role || 'student';
             
             if (mounted) {
               setCurrentUser({ 
                 ...user, 
                 ...userData,
-                role: userData.role || 'student'
+                role 
               });
+              console.log('Current user set with role:', role);
             }
-          } else if (mounted) {
+          } else {
             console.warn('No user document found for:', user.uid);
-            setCurrentUser({ ...user, role: 'student' });
+            // Create a new user document with default role
+            const newUserData = {
+              uid: user.uid,
+              email: user.email,
+              role: 'student',
+              createdAt: new Date(),
+              displayName: user.displayName || '',
+              photoURL: user.photoURL || ''
+            };
+            
+            await setDoc(doc(db, 'users', user.uid), newUserData);
+            console.log('Created new user document with role: student');
+            
+            if (mounted) {
+              setCurrentUser({ ...user, ...newUserData });
+            }
           }
         } else if (mounted) {
-          console.log('No user found in auth state change');
           setCurrentUser(null);
         }
       } catch (error) {

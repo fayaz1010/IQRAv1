@@ -4,18 +4,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { UserProvider } from '../contexts/UserContext';
 import Layout from '../components/Layout/Layout';
 import { CircularProgress, Box } from '@mui/material';
+import { SessionProvider } from '../features/iqra/contexts/SessionContext';
 
 // Lazy load components
-const Dashboard = React.lazy(() => import('../pages/Dashboard'));
+const StudentDashboard = React.lazy(() => import('../pages/dashboard/StudentDashboard'));
+const TeacherDashboard = React.lazy(() => import('../pages/dashboard/TeacherDashboard'));
+const AdminDashboard = React.lazy(() => import('../pages/admin/AdminDashboard'));
+const BookManager = React.lazy(() => import('../pages/admin/BookManager'));
 const Login = React.lazy(() => import('../pages/auth/Login'));
 const Register = React.lazy(() => import('../pages/auth/Register'));
 const Profile = React.lazy(() => import('../pages/Profile'));
 const Schedule = React.lazy(() => import('../pages/Schedule'));
 const Learn = React.lazy(() => import('../pages/Learn'));
 const Practice = React.lazy(() => import('../pages/Practice'));
-const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
 const ManageUsers = React.lazy(() => import('../pages/admin/ManageUsers'));
-const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
 const LandingPage = React.lazy(() => import('../pages/public/LandingPage'));
 const Settings = React.lazy(() => import('../pages/settings/Settings'));
 const Classes = React.lazy(() => import('../pages/Classes'));
@@ -23,6 +25,9 @@ const Courses = React.lazy(() => import('../pages/Courses'));
 const Materials = React.lazy(() => import('../pages/Materials'));
 const IqraRoutes = React.lazy(() => import('../features/iqra/routes/IqraRoutes'));
 const SessionHistory = React.lazy(() => import('../pages/SessionHistory'));
+const TeachingSession = React.lazy(() => import('../features/iqra/components/teaching/TeachingSession'));
+const StudentsList = React.lazy(() => import('../pages/teacher/students/StudentsList'));
+const StudentDetail = React.lazy(() => import('../pages/teacher/students/StudentDetail'));
 
 // Loading screen
 const LoadingScreen = () => (
@@ -43,9 +48,9 @@ const AppRoutes = () => {
     
     switch (currentUser.role) {
       case 'admin':
-        return '/admin';
+        return '/admin/dashboard';
       case 'teacher':
-        return '/teacher';
+        return '/teacher/dashboard';
       default:
         return '/dashboard';
     }
@@ -80,6 +85,8 @@ const AppRoutes = () => {
             )
           }
         />
+        
+        {/* Auth routes */}
         <Route
           path="/login"
           element={
@@ -111,7 +118,7 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute allowedRoles={['student']}>
               <Suspense fallback={<LoadingScreen />}>
-                <Dashboard />
+                <StudentDashboard />
               </Suspense>
             </ProtectedRoute>
           }
@@ -149,13 +156,80 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Session Routes */}
+        <Route
+          path="/session/:sessionId"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionProvider>
+                  <TeachingSession />
+                </SessionProvider>
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/teaching/:classId"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionProvider>
+                  <TeachingSession />
+                </SessionProvider>
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+
         {/* Teacher routes */}
         <Route
           path="/teacher"
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
+              <Navigate to="/teacher/dashboard" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
               <Suspense fallback={<LoadingScreen />}>
                 <TeacherDashboard />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/students"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <StudentsList />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher/students/:studentId"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <StudentDetail />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teaching/active-sessions"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionProvider>
+                  <IqraRoutes />
+                </SessionProvider>
               </Suspense>
             </ProtectedRoute>
           }
@@ -213,7 +287,7 @@ const AppRoutes = () => {
 
         {/* Admin routes */}
         <Route
-          path="/admin"
+          path="/admin/dashboard"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <Suspense fallback={<LoadingScreen />}>
@@ -249,6 +323,18 @@ const AppRoutes = () => {
               <Suspense fallback={<LoadingScreen />}>
                 <Settings />
               </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <Routes>
+                <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="users" element={<ManageUsers />} />
+                <Route path="books" element={<BookManager />} />
+              </Routes>
             </ProtectedRoute>
           }
         />

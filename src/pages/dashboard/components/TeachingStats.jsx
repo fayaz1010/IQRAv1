@@ -1,161 +1,114 @@
-import { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Box,
-  Paper,
+  Card,
+  CardContent,
+  Grid,
   Typography,
-  Divider,
-  IconButton,
-  CircularProgress,
   useTheme
 } from '@mui/material';
 import {
-  School as ClassesIcon,
-  CheckCircle as CompletedIcon,
-  Schedule as UpcomingIcon,
+  School as CoursesIcon,
+  AccessTime as TeachingIcon,
   Group as StudentsIcon,
-  Info as InfoIcon
+  Assignment as SessionsIcon,
+  TrendingUp as WeeklyIcon,
+  Class as TotalClassesIcon,
+  ShowChart as ProgressIcon,
+  CheckCircle as CompletionIcon
 } from '@mui/icons-material';
-
-const StatItem = ({ icon: Icon, label, value, color }) => {
-  const theme = useTheme();
-  
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-      <Box
-        sx={{
-          width: 48,
-          height: 48,
-          borderRadius: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: `${color}15`,
-          mr: 2
-        }}
-      >
-        <Icon sx={{ color }} />
-      </Box>
-      <Box sx={{ flexGrow: 1 }}>
-        <Typography variant="body2" color="textSecondary">
-          {label}
-        </Typography>
-        <Typography variant="h6">
-          {value}
-        </Typography>
-      </Box>
-    </Box>
-  );
-};
-
-const CircularProgressWithLabel = ({ value, size = 120, thickness = 4 }) => {
-  const theme = useTheme();
-  
-  return (
-    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-      <CircularProgress
-        variant="determinate"
-        value={100}
-        size={size}
-        thickness={thickness}
-        sx={{ color: theme.palette.grey[200] }}
-      />
-      <CircularProgress
-        variant="determinate"
-        value={value}
-        size={size}
-        thickness={thickness}
-        sx={{
-          color: theme.palette.primary.main,
-          position: 'absolute',
-          left: 0
-        }}
-      />
-      <Box
-        sx={{
-          top: 0,
-          left: 0,
-          bottom: 0,
-          right: 0,
-          position: 'absolute',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-      >
-        <Typography variant="h4" component="div" color="text.primary">
-          {value}%
-        </Typography>
-      </Box>
-    </Box>
-  );
-};
 
 const TeachingStats = ({ stats }) => {
   const theme = useTheme();
-  const [completionRate, setCompletionRate] = useState(0);
 
-  useEffect(() => {
-    if (stats.totalClassesToday > 0) {
-      const rate = Math.round((stats.completedClasses / stats.totalClassesToday) * 100);
-      setCompletionRate(rate);
+  const statCards = [
+    {
+      title: 'Total Courses',
+      value: stats.totalCourses || 0,
+      icon: <CoursesIcon sx={{ color: theme.palette.primary.main }} />,
+      subtitle: null
+    },
+    {
+      title: 'Teaching Hours',
+      value: stats.totalTeachingHours || 0,
+      icon: <TeachingIcon sx={{ color: theme.palette.success.main }} />,
+      subtitle: 'Total hours'
+    },
+    {
+      title: 'Total Students',
+      value: stats.totalStudents || 0,
+      icon: <StudentsIcon sx={{ color: theme.palette.info.main }} />,
+      subtitle: null
+    },
+    {
+      title: 'Total Sessions',
+      value: stats.totalSessions || 0,
+      icon: <SessionsIcon sx={{ color: theme.palette.warning.main }} />,
+      subtitle: null
+    },
+    {
+      title: 'Weekly Hours',
+      value: stats.weeklyHours || 0,
+      icon: <WeeklyIcon sx={{ color: theme.palette.primary.main }} />,
+      subtitle: 'This week'
+    },
+    {
+      title: 'Total Classes',
+      value: stats.totalClasses || 0,
+      icon: <TotalClassesIcon sx={{ color: theme.palette.error.main }} />,
+      subtitle: 'All time'
+    },
+    {
+      title: 'Average Progress',
+      value: `${stats.averageProgress || 0}%`,
+      icon: <ProgressIcon sx={{ color: theme.palette.info.main }} />,
+      subtitle: null
+    },
+    {
+      title: 'Completion Rate',
+      value: `${stats.completionRate || 0}%`,
+      icon: <CompletionIcon sx={{ color: theme.palette.success.main }} />,
+      subtitle: null
     }
-  }, [stats]);
+  ];
 
   return (
-    <Paper sx={{ p: 3, height: '100%', borderRadius: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>
-          Teaching Stats
-        </Typography>
-        <IconButton size="small">
-          <InfoIcon />
-        </IconButton>
-      </Box>
-
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          mb: 4
-        }}
-      >
-        <CircularProgressWithLabel value={completionRate} />
-        <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-          Today's Completion Rate
-        </Typography>
-      </Box>
-
-      <Divider sx={{ my: 3 }} />
-
-      <StatItem
-        icon={ClassesIcon}
-        label="Total Classes Today"
-        value={stats.totalClassesToday}
-        color={theme.palette.primary.main}
-      />
-
-      <StatItem
-        icon={CompletedIcon}
-        label="Completed Classes"
-        value={stats.completedClasses}
-        color={theme.palette.success.main}
-      />
-
-      <StatItem
-        icon={UpcomingIcon}
-        label="Upcoming Classes"
-        value={stats.upcomingClasses}
-        color={theme.palette.warning.main}
-      />
-
-      <StatItem
-        icon={StudentsIcon}
-        label="Active Students"
-        value={stats.activeStudents}
-        color={theme.palette.info.main}
-      />
-    </Paper>
+    <Grid container spacing={3}>
+      {statCards.map((stat, index) => (
+        <Grid item xs={12} sm={6} md={3} key={index}>
+          <Card 
+            sx={{ 
+              height: '100%',
+              backgroundColor: theme.palette.background.default,
+              '&:hover': {
+                backgroundColor: theme.palette.action.hover,
+              }
+            }}
+          >
+            <CardContent>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item>
+                  {stat.icon}
+                </Grid>
+                <Grid item xs>
+                  <Typography variant="h6" component="div">
+                    {stat.value}
+                  </Typography>
+                  <Typography variant="subtitle2" color="textSecondary">
+                    {stat.title}
+                  </Typography>
+                  {stat.subtitle && (
+                    <Typography variant="caption" color="textSecondary">
+                      {stat.subtitle}
+                    </Typography>
+                  )}
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
+    </Grid>
   );
 };
 

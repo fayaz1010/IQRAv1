@@ -95,14 +95,16 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
         return 'Invalid time';
       }
 
-      // Parse the ISO date string
-      const date = new Date(timeString);
-      if (isNaN(date.getTime())) {
+      // Parse HH:mm format
+      const [hours, minutes] = timeString.split(':').map(Number);
+      if (isNaN(hours) || isNaN(minutes)) {
         return 'Invalid format';
       }
 
-      // Format the time in 12-hour format
-      return format(date, 'h:mm a');
+      // Format in 12-hour format
+      const period = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
     } catch (error) {
       console.error('Error formatting time slot:', error);
       return 'Invalid format';
@@ -145,63 +147,71 @@ const ScheduleItem = ({ schedule, classData, onUpdate, onDelete }) => {
 
   return (
     <>
-      <Card 
-        sx={{ 
-          mb: 2,
-          borderLeft: 6,
-          borderColor: 'primary.main',
-          '&:hover': {
-            boxShadow: 6,
-          },
-        }}
-      >
+      <Card sx={{ mb: 2, position: 'relative' }}>
         <CardContent>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item>
-              <Avatar 
-                sx={{ 
-                  bgcolor: 'primary.main',
-                  width: 56,
-                  height: 56,
-                }}
-              >
-                <EventIcon />
-              </Avatar>
-            </Grid>
-            
-            <Grid item xs={12} sm>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-                  {classData?.name || 'Loading...'}
-                </Typography>
-                {schedule.meetLinks?.[0] && (
-                  <Tooltip title="Join Class">
-                    <IconButton 
-                      color="primary" 
-                      href={schedule.meetLinks[0]} 
-                      target="_blank"
-                      sx={{ ml: 1 }}
-                    >
-                      <VideoCallIcon />
-                    </IconButton>
-                  </Tooltip>
-                )}
-                <IconButton onClick={handleMenuClick}>
+                <Avatar sx={{ mr: 2, bgcolor: 'primary.main' }}>
+                  <EventIcon />
+                </Avatar>
+                <Box sx={{ flexGrow: 1 }}>
+                  <Typography variant="h6" component="div">
+                    {classData?.name || 'Untitled Class'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {formatRecurrence()}
+                  </Typography>
+                </Box>
+                <IconButton
+                  aria-label="schedule actions"
+                  aria-controls="schedule-menu"
+                  aria-haspopup="true"
+                  onClick={handleMenuClick}
+                  sx={{ ml: 1 }}
+                >
                   <MoreVertIcon />
                 </IconButton>
               </Box>
+            </Grid>
 
-              {renderScheduleInfo()}
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {schedule.daysOfWeek.map((day) => (
+                  <Chip
+                    key={day}
+                    icon={<AccessTimeIcon />}
+                    label={`${WEEKDAYS[day]} - ${formatTimeSlot(day)}`}
+                    variant="outlined"
+                    sx={{ mb: 1 }}
+                  />
+                ))}
+              </Box>
+            </Grid>
 
-              {classData?.description && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {classData.description}
-                </Typography>
-              )}
-
-              <Typography variant="body2" color="text.secondary">
-                Duration: {schedule.duration} minutes
-              </Typography>
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Chip
+                  icon={<AccessTimeIcon />}
+                  label={`${schedule.duration} minutes`}
+                  variant="outlined"
+                  size="small"
+                />
+                {classData?.studentIds?.length > 0 && (
+                  <Chip
+                    icon={<PeopleIcon />}
+                    label={`${classData.studentIds.length} Students`}
+                    variant="outlined"
+                    size="small"
+                  />
+                )}
+                <Chip
+                  icon={<RepeatIcon />}
+                  label={schedule.recurrencePattern}
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
             </Grid>
           </Grid>
         </CardContent>

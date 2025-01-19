@@ -1,12 +1,11 @@
 // Import only what we need for the core app structure
-import { BrowserRouter as Router } from 'react-router-dom';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-import { AuthProvider } from './contexts/AuthContext';
-import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { useTheme } from './contexts/ThemeContext';
 import getTheme from './theme/theme';
 import AppRoutes from './routes/AppRoutes';
 import ErrorBoundary from './components/ErrorBoundary';
+import React from 'react';
 
 // Firebase configuration - needed for the entire app to work with Firebase
 const firebaseConfig = {
@@ -27,41 +26,17 @@ initializeApp(firebaseConfig);
 // This component is responsible for:
 // 1. Setting up the Router for navigation
 // 2. Providing Authentication context to all child components
-// 3. Providing Theme context for consistent styling
 function App() {
-  return (
-    // Router wraps the entire app to enable navigation
-    <ErrorBoundary>
-      <Router>
-        {/* AuthProvider makes authentication state available throughout the app */}
-        <AuthProvider>
-          {/* ThemeProvider enables theme customization */}
-          <ThemeProvider>
-            <AppContent />
-          </ThemeProvider>
-        </AuthProvider>
-      </Router>
-    </ErrorBoundary>
-  );
-}
-
-// AppContent component
-// This component:
-// 1. Gets the current theme settings
-// 2. Applies the Material-UI theme
-// 3. Renders the main app routes
-function AppContent() {
-  // Get theme settings from ThemeContext
   const { mode, settings } = useTheme();
-  const muiTheme = getTheme(mode, settings?.fontSize);
+  const theme = React.useMemo(() => getTheme(mode, settings), [mode, settings]);
 
   return (
     // Apply Material-UI theme
-    <MuiThemeProvider theme={muiTheme}>
-      {/* CssBaseline normalizes browser styles */}
+    <MuiThemeProvider theme={theme}>
       <CssBaseline />
-      {/* AppRoutes contains all the routing logic */}
-      <AppRoutes />
+      <ErrorBoundary>
+        <AppRoutes />
+      </ErrorBoundary>
     </MuiThemeProvider>
   );
 }

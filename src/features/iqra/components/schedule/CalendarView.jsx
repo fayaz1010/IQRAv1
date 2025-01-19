@@ -57,16 +57,21 @@ const CalendarView = ({ schedules = [], onDayClick }) => {
               console.log('Found time slot for day', currentDayOfWeek, ':', timeSlot);
               
               try {
-                // Parse the date string to get hours and minutes
-                const timeDate = new Date(timeSlot);
+                // Parse the HH:mm time string
+                const [hours, minutes] = timeSlot.split(':').map(Number);
+                if (isNaN(hours) || isNaN(minutes)) {
+                  throw new Error('Invalid time format');
+                }
+                
                 const scheduleDate = new Date(currentDate);
-                scheduleDate.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
+                scheduleDate.setHours(hours, minutes, 0, 0);
                 
                 const dateKey = format(startOfDay(scheduleDate), 'yyyy-MM-dd');
                 const existing = newSchedulesMap.get(dateKey) || [];
                 const newSchedule = {
                   ...schedule,
                   date: format(scheduleDate, "yyyy-MM-dd'T'HH:mm:ss"),
+                  time: format(scheduleDate, 'HH:mm'),
                   className: schedule.className || 'Untitled Class'
                 };
                 console.log('Adding schedule for date:', dateKey, newSchedule);

@@ -30,8 +30,9 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../config/firebase';
-import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc, Timestamp } from 'firebase/firestore';
 import { format, addMinutes, isBefore, isAfter } from 'date-fns';
+import { checkActiveSessions } from '../utils/checkActiveSessions';
 
 const Dashboard = () => {
   const { currentUser: user, loading: authLoading } = useAuth();
@@ -43,7 +44,8 @@ const Dashboard = () => {
     todayClasses: 0,
     nextClass: null,
     assignments: 0,
-    progress: 0
+    progress: 0,
+    activeSessions: 0
   });
   const [upcomingClasses, setUpcomingClasses] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -97,209 +99,143 @@ const Dashboard = () => {
         setLoading(false);
         return;
       }
-      
-      console.log('Fetching classes for user:', user.uid);
-      // Fetch classes where student is enrolled
+
+      // First get all classes where student is enrolled
+      console.log('Fetching enrolled classes...');
       const classesQuery = query(
         collection(db, 'classes'),
         where('studentIds', 'array-contains', user.uid)
       );
       const classesSnapshot = await getDocs(classesQuery);
       const classIds = classesSnapshot.docs.map(doc => doc.id);
-      
-      console.log('Found classes for student:', classIds);
-      
-      if (classIds.length === 0) {
-        setStats({
-          activeClasses: 0,
-          todayClasses: 0,
-          nextClass: null,
-          assignments: 0,
-          progress: 0
-        });
-        setUpcomingClasses([]);
-        setLoading(false);
-        return;
-      }
+      console.log('Found enrolled classes:', classIds);
 
-      // Fetch today's schedule
-      console.log('Fetching sessions...');
-      const today = new Date('2025-01-05T18:01:47+08:00'); // Using the provided current time
-      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      // Fetch active sessions for these classes
+      console.log('Fetching active sessions...');
+      const activeSessions = [];
       
-      // First get all classes where student is enrolled
-      const classesQuery2 = query(
-        collection(db, 'classes'),
-        where('studentIds', 'array-contains', user.uid)
-      );
-      const classesSnapshot2 = await getDocs(classesQuery2);
-      const classIds2 = classesSnapshot2.docs.map(doc => doc.id);
-      
-      console.log('Found classes for student:', classIds2);
-      
-      if (classIds2.length === 0) {
-        setStats({
-          activeClasses: 0,
-          todayClasses: 0,
-          nextClass: null,
-          assignments: 0,
-          progress: 0
-        });
-        setUpcomingClasses([]);
-        setLoading(false);
-        return;
-      }
-
-      // Query sessions instead of schedules
-      const sessionsRef = collection(db, 'sessions');
-      const sessionsQuery = query(
-        sessionsRef,
-        where('classId', 'in', classIds2),
-        where('date', '>=', startOfToday.toISOString()),
-        where('status', '==', 'scheduled'),
-        orderBy('date'),
-        limit(10)
-      );
-      
-      const sessionSnapshot = await getDocs(sessionsQuery);
-      
-      // Use a Map to keep only unique sessions by date/time
-      const uniqueSessions = new Map();
-      
-      await Promise.all(sessionSnapshot.docs.map(async doc => {
-        const sessionData = doc.data();
-        const classDoc = classesSnapshot2.docs.find(c => c.id === sessionData.classId);
-        const classData = classDoc?.data() || {};
-        
-        // Parse the session date
-        const sessionDateTime = new Date(sessionData.date);
-        const sessionKey = `${sessionData.classId}_${sessionDateTime.toISOString()}`;
-        
-        // Only keep the first occurrence of each unique session
-        if (!uniqueSessions.has(sessionKey)) {
-          uniqueSessions.set(sessionKey, {
-            id: doc.id,
-            ...sessionData,
-            className: classData.name || 'Unknown Class',
-            teacherName: classData.teacherName || 'Unknown Teacher',
-            courseId: classData.courseId,
-            meetLink: sessionData.meetLink || classData.meetLink,
-            dateTime: sessionDateTime,
-            startTime: format(sessionDateTime, 'HH:mm')
+      if (classIds.length > 0) {
+        // Query sessions one class at a time to avoid complex queries
+        for (const classId of classIds) {
+          console.log('Checking sessions for class:', classId);
+          const sessionsQuery = query(
+            collection(db, 'sessions'),
+            where('classId', '==', classId),
+            where('status', '==', 'active')
+          );
+          
+          const sessionsSnapshot = await getDocs(sessionsQuery);
+          sessionsSnapshot.forEach(doc => {
+            const sessionData = doc.data();
+            if (sessionData.startTime && !sessionData.endTime) {
+              // Find the corresponding class
+              const classDoc = classesSnapshot.docs.find(c => c.id === sessionData.classId);
+              if (classDoc) {
+                const classData = classDoc.data();
+                activeSessions.push({
+                  id: doc.id,
+                  ...sessionData,
+                  className: classData.name
+                });
+              }
+            }
           });
         }
-      }));
+      }
       
-      // Convert Map to array and sort by date
-      const sessions = Array.from(uniqueSessions.values())
-        .sort((a, b) => a.dateTime - b.dateTime)
-        .slice(0, 5) // Only take the first 5 sessions
-        .map(session => {
-          const now = new Date('2025-01-05T18:11:27+08:00'); // Using provided current time
-          const sessionStart = new Date(session.date);
-          const joinWindow = addMinutes(sessionStart, -15); // 15 mins before session
-          const canJoin = isAfter(now, joinWindow) && isBefore(now, addMinutes(sessionStart, session.duration));
-          
-          return {
-            ...session,
-            canJoin
-          };
-        });
-      
-      console.log('Found unique sessions:', sessions);
-      
-      // Set upcoming classes with formatted dates and times
-      setUpcomingClasses(sessions.map(session => ({
-        ...session,
-        formattedDate: format(session.dateTime, 'EEEE, MMMM d'),
-        formattedTime: session.startTime
-      })));
+      console.log('Found active sessions:', activeSessions);
+      setActiveSession(activeSessions.length > 0 ? activeSessions[0] : null);
 
-      // Calculate stats
-      console.log('Calculating stats...');
-      const todayClasses = sessions.filter(s => 
-        s.dateTime.toDateString() === today.toDateString()
-      ).length;
+      // Get today's date range
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
 
-      const nextClass = sessions[0];
-
-      // Fetch active sessions
-      console.log('Checking for active sessions...');
-      const activeSessionQuery = query(
+      // Fetch today's classes
+      console.log('Fetching today\'s classes...');
+      const todayClassesQuery = query(
         collection(db, 'classes'),
         where('studentIds', 'array-contains', user.uid),
-        where('hasActiveSession', '==', true)
+        where('schedule.nextSession', '>=', Timestamp.fromDate(startOfDay)),
+        where('schedule.nextSession', '<=', Timestamp.fromDate(endOfDay))
       );
-      const activeSessionSnapshot = await getDocs(activeSessionQuery);
-      const activeSessionClass = activeSessionSnapshot.docs[0];
-      
-      if (activeSessionClass) {
-        console.log('Found active class, checking for active session...');
-        const sessionsQuery = query(
-          collection(db, `classes/${activeSessionClass.id}/sessions`),
-          where('status', '==', 'active'),
-          limit(1)
-        );
-        const sessionSnapshot = await getDocs(sessionsQuery);
-        if (!sessionSnapshot.empty) {
-          console.log('Found active session');
-          setActiveSession({
-            classId: activeSessionClass.id,
-            className: activeSessionClass.data().name,
-            sessionId: sessionSnapshot.docs[0].id,
-            ...sessionSnapshot.docs[0].data()
-          });
+      const todayClassesSnapshot = await getDocs(todayClassesQuery);
+      const todayClasses = todayClassesSnapshot.docs.length;
+      console.log('Found today\'s classes:', todayClasses);
+
+      // Calculate progress
+      let totalProgress = 0;
+      let classCount = 0;
+      for (const classDoc of classesSnapshot.docs) {
+        const classData = classDoc.data();
+        if (classData.studentProgress && classData.studentProgress[user.uid]) {
+          totalProgress += classData.studentProgress[user.uid].progress || 0;
+          classCount++;
         }
       }
 
-      // Fetch assignments
-      console.log('Fetching assignments...');
-      let assignmentsCount = 0;
-      try {
-        const assignmentsQuery = query(
-          collection(db, 'assignments'),
-          where('classId', 'in', classIds2),
-          where('dueDate', '>=', today.toISOString())
-        );
-        const assignmentsSnapshot = await getDocs(assignmentsQuery);
-        assignmentsCount = assignmentsSnapshot.size;
-        console.log('Found assignments:', assignmentsCount);
-      } catch (err) {
-        console.warn('Error fetching assignments:', err);
-        // Continue with 0 assignments instead of failing completely
-      }
+      // Fetch pending assignments
+      console.log('Fetching pending assignments...');
+      const assignmentsQuery = query(
+        collection(db, 'assignments'),
+        where('studentId', '==', user.uid),
+        where('status', '==', 'pending')
+      );
+      const assignmentsSnapshot = await getDocs(assignmentsQuery);
+      console.log('Found pending assignments:', assignmentsSnapshot.docs.length);
 
-      console.log('Setting final stats...');
+      // Update stats
       setStats({
-        activeClasses: classIds2.length,
+        activeClasses: classIds.length,
         todayClasses,
-        nextClass,
-        assignments: assignmentsCount,
-        progress: await calculateOverallProgress(classIds2)
+        assignments: assignmentsSnapshot.docs.length,
+        progress: classCount > 0 ? Math.round(totalProgress / classCount) : 0,
+        activeSessions: activeSessions.length
       });
 
-      console.log('Dashboard data fetch complete');
+      // Get upcoming classes
+      console.log('Fetching upcoming classes...');
+      const upcomingClassesQuery = query(
+        collection(db, 'classes'),
+        where('studentIds', 'array-contains', user.uid),
+        where('schedule.nextSession', '>=', Timestamp.fromDate(now))
+      );
+      const upcomingClassesSnapshot = await getDocs(upcomingClassesQuery);
+      
+      // Map class data
+      const upcomingClassesData = upcomingClassesSnapshot.docs
+        .map(doc => {
+          const classData = doc.data();
+          return {
+            id: doc.id,
+            name: classData.name,
+            schedule: classData.schedule,
+            progress: classData.studentProgress?.[user.uid]?.progress || 0
+          };
+        })
+        .sort((a, b) => {
+          const aNext = a.schedule?.nextSession?.toDate() || new Date(9999, 11, 31);
+          const bNext = b.schedule?.nextSession?.toDate() || new Date(9999, 11, 31);
+          return aNext - bNext;
+        })
+        .slice(0, 5);
+
+      setUpcomingClasses(upcomingClassesData);
+      
       setLoading(false);
-    } catch (err) {
-      console.error('Error in fetchDashboardData:', err);
-      setError('Failed to load dashboard data. Please try again.');
+      console.log('Dashboard data fetch complete');
+      
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setError(error.message);
       setLoading(false);
     }
   };
 
-  const calculateOverallProgress = async (classIds) => {
-    if (classIds.length === 0) return 0;
-    
-    let totalProgress = 0;
-    for (const classId of classIds) {
-      const classDoc = await getDoc(doc(db, 'classes', classId));
-      if (classDoc.exists()) {
-        const classData = classDoc.data();
-        totalProgress += classData.studentProgress?.[user.uid] || 0;
-      }
-    }
-    
-    return Math.round(totalProgress / classIds.length);
+  const handleCheckActiveSessions = async () => {
+    console.log('Checking for active sessions...');
+    const sessions = await checkActiveSessions(user.uid);
+    console.log('Active sessions:', sessions);
   };
 
   const DashboardCard = ({ title, icon, value, color }) => (
@@ -339,9 +275,11 @@ const Dashboard = () => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Welcome back, {user?.displayName || user?.email}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" component="h1">
+          Welcome back, {user?.displayName || 'Student'}
+        </Typography>
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -409,6 +347,14 @@ const Dashboard = () => {
             color="warning"
           />
         </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <DashboardCard
+            title="Active Sessions"
+            icon={<VideoCameraFrontIcon color="info" />}
+            value={stats.activeSessions}
+            color="info"
+          />
+        </Grid>
 
         {/* Upcoming Classes */}
         <Grid item xs={12} md={6}>
@@ -437,45 +383,29 @@ const Dashboard = () => {
                   <React.Fragment key={classItem.id}>
                     <ListItem>
                       <ListItemText
-                        primary={classItem.className}
+                        primary={classItem.name}
                         secondary={
                           <Box>
                             <Typography variant="body2" color="text.secondary">
-                              {classItem.formattedDate}
+                              {format(classItem.schedule.nextSession.toDate(), 'EEEE, MMMM d')}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              {classItem.formattedTime}
+                              {format(classItem.schedule.nextSession.toDate(), 'HH:mm')}
                             </Typography>
                           </Box>
                         }
                       />
-                      {classItem.meetLink && (
+                      {classItem.schedule?.meetLink && (
                         <ListItemSecondaryAction>
-                          <Tooltip title={
-                            classItem.canJoin 
-                              ? "Join the session now"
-                              : "Join button will be enabled 15 minutes before the session starts"
-                          }>
-                            <span>
-                              <Button
-                                startIcon={<VideoCameraFrontIcon />}
-                                href={classItem.meetLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                size="small"
-                                disabled={!classItem.canJoin}
-                                sx={{
-                                  opacity: classItem.canJoin ? 1 : 0.6,
-                                  '&.Mui-disabled': {
-                                    color: 'text.disabled',
-                                    backgroundColor: 'action.disabledBackground',
-                                  }
-                                }}
-                              >
-                                Join
-                              </Button>
-                            </span>
-                          </Tooltip>
+                          <Button
+                            startIcon={<VideoCameraFrontIcon />}
+                            href={classItem.schedule.meetLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            size="small"
+                          >
+                            Join
+                          </Button>
                         </ListItemSecondaryAction>
                       )}
                     </ListItem>
