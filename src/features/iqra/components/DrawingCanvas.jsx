@@ -51,52 +51,9 @@ const DrawingCanvas = ({
   const gridStrokeWidth = 0.5;
 
   useEffect(() => {
-    console.log('DrawingCanvas received savedDrawing:', savedDrawing);
-    if (savedDrawing) {
-      // Extract lines from savedDrawing, handling both new and old formats
-      let drawingLines = [];
-      if (Array.isArray(savedDrawing)) {
-        drawingLines = savedDrawing;
-      } else if (savedDrawing.lines && Array.isArray(savedDrawing.lines)) {
-        drawingLines = savedDrawing.lines;
-      } else if (typeof savedDrawing === 'object') {
-        // Handle numbered properties
-        drawingLines = Object.keys(savedDrawing)
-          .filter(key => !isNaN(key))
-          .sort((a, b) => parseInt(a) - parseInt(b))
-          .map(key => savedDrawing[key])
-          .filter(line => line && typeof line === 'object'); // Ensure valid line objects
-      }
-
-      // Validate each line object
-      drawingLines = drawingLines.filter(line => {
-        const isValid = line && 
-          Array.isArray(line.points) && 
-          line.points.length >= 2 &&
-          typeof line.color === 'string' &&
-          typeof line.strokeWidth === 'number';
-        if (!isValid) {
-          console.warn('Invalid line object:', line);
-        }
-        return isValid;
-      });
-
-      console.log('Setting drawing lines:', drawingLines);
-      if (drawingLines.length > 0) {
-        console.log('Setting canvas with', drawingLines.length, 'lines');
-        setLines(drawingLines);
-        setHistory([drawingLines]);
-        setHistoryStep(0);
-      } else {
-        console.log('No valid drawing lines found');
-        setLines([]);
-        setHistory([[]]);
-        setHistoryStep(0);
-      }
-    } else {
-      console.log('No drawing data, clearing canvas');
-      setLines([]);
-      setHistory([[]]);
+    if (savedDrawing && savedDrawing.lines) {
+      setLines(savedDrawing.lines);
+      setHistory([savedDrawing.lines]);
       setHistoryStep(0);
     }
   }, [savedDrawing]);
@@ -118,12 +75,6 @@ const DrawingCanvas = ({
       return () => window.removeEventListener('resize', updateSize);
     }
   }, []);
-
-  useEffect(() => {
-    if (stageRef.current) {
-      stageRef.current.batchDraw();
-    }
-  }, [lines]);
 
   const addToHistory = (newLines) => {
     const newHistory = history.slice(0, historyStep + 1);
@@ -168,7 +119,6 @@ const DrawingCanvas = ({
         strokeWidth,
         isDot: true
       };
-      console.log('Adding dot:', newLine);
       setLines([...lines, newLine]);
       addToHistory([...lines, newLine]);
     } else {
@@ -180,7 +130,6 @@ const DrawingCanvas = ({
         strokeWidth,
         tension: tool === 'brush' ? 0.5 : 0
       };
-      console.log('Starting new line:', newLine);
       setLines([...lines, newLine]);
     }
   };
@@ -214,39 +163,30 @@ const DrawingCanvas = ({
       }
 
       const updatedLines = lines.slice(0, -1);
-      const updatedLine = {
+      updatedLines.push({
         ...lastLine,
         points: newPoints
-      };
-      updatedLines.push(updatedLine);
+      });
 
       setLines(updatedLines);
-      if (stageRef.current) {
-        stageRef.current.batchDraw();
-      }
     }
   };
 
   const handleMouseUp = () => {
     if (!isDrawing || readOnly) return;
     setIsDrawing(false);
-    if (lines.length > 0) {
-      console.log('Finished drawing line, total lines:', lines.length);
-      addToHistory([...lines]);
-    }
+    addToHistory([...lines]);
   };
 
   const handleSave = async () => {
-    if (onSave && lines.length > 0) {
-      const validLines = lines.filter(line => 
-        line && 
-        Array.isArray(line.points) && 
-        line.points.length >= 2 &&
-        typeof line.color === 'string' &&
-        typeof line.strokeWidth === 'number'
-      );
-      console.log('Saving drawing with lines:', validLines);
-      await onSave(validLines);
+    if (onSave) {
+      const drawingData = {
+        lines,
+        width: stageSize.width,
+        height: stageSize.height,
+        timestamp: new Date().toISOString()
+      };
+      await onSave(drawingData);
     }
   };
 

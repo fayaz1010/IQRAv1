@@ -73,7 +73,6 @@ const IqraTeaching = () => {
     activeSession, 
     activeClass,
     updateClassProgress,
-    updateSessionBook,
     endSession
   } = useSession();
 
@@ -97,36 +96,9 @@ const IqraTeaching = () => {
 
   useEffect(() => {
     if (currentUser) {
-      const loadData = async () => {
-        try {
-          setLoading(true);
-          setError(null);
-          
-          // If there's no active session, load classes
-          if (!activeSession) {
-            await loadClasses();
-          }
-        } catch (error) {
-          console.error('Error loading data:', error);
-          setError('Failed to load data');
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      loadData();
+      loadClasses();
     }
-  }, [currentUser, activeSession]);
-
-  useEffect(() => {
-    if (activeSession) {
-      console.log('Active session detected:', activeSession);
-      // If we have an active session but no active class, load the class data
-      if (!activeClass && activeSession.classId) {
-        loadClassData(activeSession.classId);
-      }
-    }
-  }, [activeSession]);
+  }, [currentUser]);
 
   useEffect(() => {
     if (practiceAreaRef.current) {
@@ -284,62 +256,6 @@ const IqraTeaching = () => {
     }
   };
 
-  const loadClassData = async (classId) => {
-    try {
-      const classRef = doc(db, 'classes', classId);
-      const classDocSnapshot = await getDoc(classRef);
-      if (classDocSnapshot.exists()) {
-        const classData = classDocSnapshot.data();
-        // Fetch course details
-        let courseData = null;
-        if (classData.courseId) {
-          const courseDocRef = doc(db, 'courses', classData.courseId);
-          const courseDocSnapshot = await getDoc(courseDocRef);
-          if (courseDocSnapshot.exists()) {
-            courseData = courseDocSnapshot.data();
-          }
-        }
-        // Fetch student details and progress
-        const students = [];
-        for (const studentId of (classData.studentIds || [])) {
-          const studentDocRef = doc(db, 'users', studentId);
-          const studentDocSnapshot = await getDoc(studentDocRef);
-          if (studentDocSnapshot.exists()) {
-            const studentData = studentDocSnapshot.data();
-            
-            // Get student's progress
-            const progressDocRef = doc(db, 'progress', studentId);
-            const progressDocSnapshot = await getDoc(progressDocRef);
-            const progress = progressDocSnapshot.exists() ? progressDocSnapshot.data() : {};
-            
-            students.push({
-              id: studentId,
-              name: studentData.displayName || studentData.email,
-              email: studentData.email,
-              photoURL: studentData.photoURL,
-              progress: progress[classData.courseId] || {
-                currentBook: courseData?.iqraBooks?.[0] || 'Iqra Book 1',
-                currentPage: 1,
-                lastUpdated: null
-              }
-            });
-          }
-        }
-        
-        setClasses([{
-          id: classDocSnapshot.id,
-          name: classData.name,
-          course: courseData,
-          students,
-          description: classData.description
-        }]);
-      }
-    } catch (error) {
-      console.error('Error loading class data:', error);
-      setError('Failed to load class data');
-    }
-  };
-
   const handleStartSession = async (classId, bookId) => {
     try {
       await startSession(classId, bookId);
@@ -353,8 +269,7 @@ const IqraTeaching = () => {
     if (!activeSession || !activeClass) return;
     
     try {
-      setError(null);
-      await updateSessionBook(newBook);
+      await handleStartSession(activeClass.id, newBook);
     } catch (error) {
       console.error('Error changing book:', error);
       setError('Failed to change book');
@@ -699,22 +614,21 @@ const IqraTeaching = () => {
                 </span>
               </Tooltip>
 
-              {activeClass?.course?.iqraBooks?.length > 0 && (
-                <FormControl sx={{ minWidth: 200 }}>
-                  <InputLabel>Select Book</InputLabel>
-                  <Select
-                    value={activeClass.course.iqraBooks.includes(activeSession?.book) ? activeSession.book : activeClass.course.iqraBooks[0]}
-                    onChange={(e) => handleBookChange(e.target.value)}
-                    label="Select Book"
-                  >
-                    {activeClass.course.iqraBooks.map((book) => (
-                      <MenuItem key={book} value={book}>
-                        {book}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Select Book</InputLabel>
+                <Select
+                  value={activeSession?.book || ''}
+                  onChange={(e) => handleBookChange(e.target.value)}
+                  label="Select Book"
+                  disabled={!activeClass}
+                >
+                  {activeClass?.course?.iqraBooks?.map((book) => (
+                    <MenuItem key={book} value={book}>
+                      {book}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
               <Button
                 variant="contained"

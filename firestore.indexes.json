@@ -6,28 +6,6 @@
       "fields": [
         {
           "fieldPath": "classId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "endTime",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "startTime",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "sessions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "classId",
           "arrayConfig": "CONTAINS"
         },
         {
@@ -36,80 +14,6 @@
         },
         {
           "fieldPath": "date",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "sessions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "classId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "endTime",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "classes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "studentIds",
-          "arrayConfig": "CONTAINS"
-        },
-        {
-          "fieldPath": "schedule.nextSession",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "classes",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "studentIds",
-          "arrayConfig": "CONTAINS"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "sessions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "classId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "assignments",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "studentId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
           "order": "ASCENDING"
         }
       ]

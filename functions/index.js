@@ -1,8 +1,10 @@
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const { google } = require('googleapis');
+const { getFirestore } = require('firebase-admin/firestore');
 
 admin.initializeApp();
+const db = getFirestore();
 
 // Google Meet API scopes required for full functionality
 const SCOPES = [
@@ -125,5 +127,145 @@ exports.refreshGoogleToken = functions
         'internal',
         'Error refreshing token'
       );
+    }
+  });
+
+// Scheduled cleanup function that runs daily at midnight
+exports.cleanupStaleData = functions.pubsub
+  .schedule('0 0 * * *')  // Run at midnight every day
+  .timeZone('Asia/Singapore')
+  .onRun(async (context) => {
+    const batch = db.batch();
+    const batchOperations = [];
+    let totalDeleted = 0;
+
+    try {
+      console.log('Starting daily cleanup...');
+
+      // 1. Clean up sessions older than 30 days or incomplete sessions older than 24 hours
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+      const sessionsQuery = await db.collection('sessions').where('startTime', '<=', thirtyDaysAgo.toISOString()).get();
+      const incompleteSessionsQuery = await db.collection('sessions')
+        .where('status', '==', 'active')
+        .where('startTime', '<=', twentyFourHoursAgo.toISOString())
+        .get();
+
+      // 2. Clean up recordings older than 30 days that aren't marked as important
+      const recordingsQuery = await db.collectionGroup('recordings')
+        .where('createdAt', '<=', thirtyDaysAgo.toISOString())
+        .where('isImportant', '==', false)
+        .get();
+
+      // Process sessions
+      for (const doc of sessionsQuery.docs) {
+        batchOperations.push(batch.delete(doc.ref));
+        totalDeleted++;
+
+        // If batch is full, commit it and start a new one
+        if (batchOperations.length >= 500) {
+          await batch.commit();
+          batch = db.batch();
+          batchOperations.length = 0;
+        }
+      }
+
+      // Process incomplete sessions
+      for (const doc of incompleteSessionsQuery.docs) {
+        const sessionData = doc.data();
+        // Only delete if it's truly stale (no recent activity)
+        const lastActivity = sessionData.lastActivity || sessionData.startTime;
+        if (new Date(lastActivity) <= twentyFourHoursAgo) {
+          batchOperations.push(batch.delete(doc.ref));
+          totalDeleted++;
+
+          if (batchOperations.length >= 500) {
+            await batch.commit();
+            batch = db.batch();
+            batchOperations.length = 0;
+          }
+        }
+      }
+
+      // Process old recordings
+      for (const doc of recordingsQuery.docs) {
+        batchOperations.push(batch.delete(doc.ref));
+        totalDeleted++;
+
+        if (batchOperations.length >= 500) {
+          await batch.commit();
+          batch = db.batch();
+          batchOperations.length = 0;
+        }
+      }
+
+      // Commit any remaining operations
+      if (batchOperations.length > 0) {
+        await batch.commit();
+      }
+
+      console.log(`Cleanup completed. Total documents deleted: ${totalDeleted}`);
+      
+      // Store cleanup statistics
+      await db.collection('system').doc('cleanup-stats').set({
+        lastRun: admin.firestore.FieldValue.serverTimestamp(),
+        documentsDeleted: totalDeleted,
+        status: 'success'
+      }, { merge: true });
+
+      return { success: true, deletedCount: totalDeleted };
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      
+      // Store error information
+      await db.collection('system').doc('cleanup-stats').set({
+        lastRun: admin.firestore.FieldValue.serverTimestamp(),
+        error: error.message,
+        status: 'failed'
+      }, { merge: true });
+      
+      throw error;
+    }
+  });
+
+// Function to mark a session as completed if it's been inactive
+exports.checkInactiveSessions = functions.pubsub
+  .schedule('*/15 * * * *')  // Run every 15 minutes
+  .timeZone('Asia/Singapore')
+  .onRun(async (context) => {
+    const thirtyMinutesAgo = new Date();
+    thirtyMinutesAgo.setMinutes(thirtyMinutesAgo.getMinutes() - 30);
+
+    try {
+      const sessionsQuery = await db.collection('sessions')
+        .where('status', '==', 'active')
+        .where('lastActivity', '<=', thirtyMinutesAgo.toISOString())
+        .get();
+
+      const batch = db.batch();
+      let updatedCount = 0;
+
+      sessionsQuery.docs.forEach(doc => {
+        batch.update(doc.ref, {
+          status: 'completed',
+          endTime: admin.firestore.FieldValue.serverTimestamp(),
+          endReason: 'inactivity'
+        });
+        updatedCount++;
+      });
+
+      if (updatedCount > 0) {
+        await batch.commit();
+        console.log(`Marked ${updatedCount} inactive sessions as completed`);
+      }
+
+      return { success: true, updatedCount };
+    } catch (error) {
+      console.error('Error checking inactive sessions:', error);
+      throw error;
     }
   });

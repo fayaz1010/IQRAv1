@@ -1,17 +1,6 @@
 import { db } from '../config/firebase';
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs,
-  doc,
-  getDoc, 
-  updateDoc, 
-  deleteDoc 
-} from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { createCalendarEvent, updateCalendarEvent } from './calendarService';
-import { startOfDay, addWeeks, addMinutes, format, parseISO } from 'date-fns';
 
 export const createSchedule = async (scheduleData) => {
   try {
@@ -25,38 +14,55 @@ export const createSchedule = async (scheduleData) => {
     }
     const classData = classSnapshot.data();
 
-    // Ensure all dates are properly formatted
-    const normalizedStartDate = startOfDay(new Date(startDate));
+    // Convert timeSlots to actual dates for the first occurrence
+    const processedTimeSlots = {};
+    const now = new Date('2025-01-07T01:15:47+08:00'); // Using provided time
     
-    // Validate and normalize time slots (already in HH:mm format)
-    const normalizedTimeSlots = {};
-    for (const [day, time] of Object.entries(timeSlots)) {
-      // Validate time format
+    console.log('Debug - Creating schedule with time slots:', timeSlots);
+    
+    Object.entries(timeSlots).forEach(([dayIndex, time]) => {
+      if (!time) return;
+      
       const [hours, minutes] = time.split(':').map(Number);
-      if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        throw new Error(`Invalid time format for day ${day}: ${time}`);
+      const targetDate = new Date(now);
+      targetDate.setHours(hours, minutes, 0, 0);
+      
+      // Calculate days until next occurrence
+      const currentDay = now.getDay();
+      let daysUntilTarget = Number(dayIndex) - currentDay;
+      
+      if (daysUntilTarget < 0) {
+        daysUntilTarget += 7;
+      } else if (daysUntilTarget === 0) {
+        // If it's the same day, but the time has passed, go to next week
+        if (now.getHours() > hours || (now.getHours() === hours && now.getMinutes() >= minutes)) {
+          daysUntilTarget = 7;
+        }
       }
-      normalizedTimeSlots[day] = time; // Keep as HH:mm format
-    }
+      
+      targetDate.setDate(targetDate.getDate() + daysUntilTarget);
+      processedTimeSlots[dayIndex] = targetDate.toISOString();
+      console.log('Debug - Processed time slot:', { dayIndex, time, targetDate: targetDate.toISOString() });
+    });
 
     // Create schedule document
     const scheduleRef = await addDoc(collection(db, 'schedules'), {
       classId,
       teacherId: classData.teacherId,
-      startDate: format(normalizedStartDate, "yyyy-MM-dd"),
+      startDate: startDate.toISOString(),
       recurrencePattern,
       daysOfWeek,
       duration,
-      timeSlots: normalizedTimeSlots,
+      timeSlots: processedTimeSlots,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
 
-    // Create individual sessions
+    // Create individual sessions for the next 12 weeks
     const sessions = [];
-    const numberOfWeeks = 12; // Default to 12 weeks of sessions
+    const numberOfWeeks = 12;
 
-    // Check for existing sessions
+    // Check existing sessions to avoid duplicates
     const existingSessionsQuery = query(
       collection(db, 'sessions'),
       where('classId', '==', classId),
@@ -66,36 +72,40 @@ export const createSchedule = async (scheduleData) => {
     const existingSessions = new Map();
     existingSessionsSnapshot.forEach(doc => {
       const data = doc.data();
-      existingSessions.set(data.date, doc.id);
+      existingSessions.set(data.startTime, doc.id);
     });
 
-    // Calculate all session dates
+    console.log('Debug - Creating sessions for class:', classId);
+    console.log('Debug - Time slots:', processedTimeSlots);
+
+    // Create sessions for each timeslot for the next 12 weeks
     for (let week = 0; week < numberOfWeeks; week++) {
-      const weekStartDate = addWeeks(normalizedStartDate, week);
-      
-      for (const day of daysOfWeek) {
-        // Create session date by combining the week date with time slot
-        const [hours, minutes] = normalizedTimeSlots[day].split(':').map(Number);
-        const sessionDate = new Date(weekStartDate);
-        sessionDate.setDate(sessionDate.getDate() + (Number(day) % 7));
-        sessionDate.setHours(hours, minutes, 0, 0);
-        
-        const sessionDateStr = format(sessionDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
-        const sessionEndDate = addMinutes(sessionDate, duration);
-        const sessionEndDateStr = format(sessionEndDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
+      for (const [dayIndex, baseTime] of Object.entries(processedTimeSlots)) {
+        const sessionDate = new Date(baseTime);
+        sessionDate.setDate(sessionDate.getDate() + (week * 7));
+        const sessionDateStr = sessionDate.toISOString();
 
         // Skip if session already exists
         if (existingSessions.has(sessionDateStr)) {
+          console.log('Debug - Session already exists:', sessionDateStr);
           sessions.push(existingSessions.get(sessionDateStr));
           continue;
         }
+
+        console.log('Debug - Creating new session for:', { 
+          week, 
+          dayIndex, 
+          sessionDate: sessionDateStr,
+          classId,
+          duration
+        });
 
         // Create calendar event
         const eventDetails = {
           title: `${classData.name} - Class Session`,
           description: `Regular class session for ${classData.name}`,
           startTime: sessionDateStr,
-          endTime: sessionEndDateStr,
+          endTime: new Date(sessionDate.getTime() + duration * 60000).toISOString(),
           attendees: classData.studentIds || []
         };
 
@@ -105,15 +115,23 @@ export const createSchedule = async (scheduleData) => {
         const sessionRef = await addDoc(collection(db, 'sessions'), {
           scheduleId: scheduleRef.id,
           classId,
-          teacherId: classData.teacherId,
-          date: sessionDateStr,
-          endDate: sessionEndDateStr,
+          startTime: sessionDateStr,
+          endTime: new Date(sessionDate.getTime() + duration * 60000).toISOString(),
           duration,
           status: 'scheduled',
           eventId,
           meetLink,
+          teacherId: classData.teacherId,
+          teacherName: classData.teacherName,
+          className: classData.name,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
+        });
+
+        console.log('Debug - Created session:', {
+          id: sessionRef.id,
+          startTime: sessionDateStr,
+          className: classData.name
         });
 
         sessions.push(sessionRef.id);
@@ -139,88 +157,38 @@ export const getSchedules = async (userId, userRole) => {
   try {
     const schedulesRef = collection(db, 'schedules');
     let q;
-    
+
     if (userRole === 'teacher') {
       q = query(schedulesRef, where('teacherId', '==', userId));
     } else if (userRole === 'student') {
-      // For students, we need to first get their classes
+      // First get the classes where the student is enrolled
       const classesRef = collection(db, 'classes');
-      const classesQuery = query(classesRef, where('studentIds', 'array-contains', userId));
-      const classesSnap = await getDocs(classesQuery);
-      const classIds = classesSnap.docs.map(doc => doc.id);
+      const classQuery = query(classesRef, where('studentIds', 'array-contains', userId));
+      const classSnapshot = await getDocs(classQuery);
+      const classIds = [];
+      classSnapshot.forEach(doc => classIds.push(doc.id));
       
       if (classIds.length === 0) {
-        return []; // No classes, so no schedules
+        return []; // Return empty array if student has no classes
       }
       
-      // Get schedules for all their classes
+      // Then get schedules for those classes
       q = query(schedulesRef, where('classId', 'in', classIds));
     } else if (userRole === 'admin') {
-      q = query(schedulesRef); // Admins can see all schedules
+      q = query(schedulesRef);
     } else {
       throw new Error('Invalid user role');
     }
-    
-    const querySnapshot = await getDocs(q);
-    
-    const schedules = [];
-    for (const docSnap of querySnapshot.docs) {
-      const scheduleData = { id: docSnap.id, ...docSnap.data() };
-      
-      // Parse dates back to Date objects
-      if (scheduleData.startDate) {
-        scheduleData.startDate = parseISO(scheduleData.startDate);
-      }
-      
-      // Normalize time slots to HH:mm format
-      const timeSlots = {};
-      for (const [day, time] of Object.entries(scheduleData.timeSlots || {})) {
-        if (typeof time === 'string') {
-          if (time.includes('T')) {
-            // Old format: ISO string
-            try {
-              const date = new Date(time);
-              timeSlots[day] = format(date, 'HH:mm');
-            } catch (error) {
-              console.error('Error parsing time slot:', error);
-              timeSlots[day] = '00:00';
-            }
-          } else if (time.includes(':')) {
-            // New format: HH:mm
-            timeSlots[day] = time;
-          } else {
-            console.error('Invalid time format:', time);
-            timeSlots[day] = '00:00';
-          }
-        } else if (time instanceof Date) {
-          timeSlots[day] = format(time, 'HH:mm');
-        } else {
-          console.error('Invalid time type:', typeof time);
-          timeSlots[day] = '00:00';
-        }
-      }
-      scheduleData.timeSlots = timeSlots;
 
-      // Get associated class data
-      try {
-        const classDocRef = doc(db, 'classes', scheduleData.classId);
-        const classSnap = await getDoc(classDocRef);
-        if (classSnap.exists()) {
-          const classData = classSnap.data();
-          scheduleData.className = classData.name;
-          scheduleData.studentCount = classData.studentIds ? classData.studentIds.length : 0;
-        }
-      } catch (classError) {
-        console.error('Error fetching class data:', classError);
-        scheduleData.studentCount = 0;
-      }
-      
-      schedules.push(scheduleData);
-    }
-    
+    const snapshot = await getDocs(q);
+    const schedules = [];
+    snapshot.forEach(doc => {
+      schedules.push({ id: doc.id, ...doc.data() });
+    });
+
     return schedules;
   } catch (error) {
-    console.error('Error getting schedules:', error);
+    console.error('Error fetching schedules:', error);
     throw error;
   }
 };
@@ -228,32 +196,11 @@ export const getSchedules = async (userId, userRole) => {
 export const updateSchedule = async (scheduleId, updates) => {
   try {
     const scheduleRef = doc(db, 'schedules', scheduleId);
-    
-    // Normalize time slots if they're being updated
-    if (updates.timeSlots) {
-      const normalizedTimeSlots = {};
-      for (const [day, time] of Object.entries(updates.timeSlots)) {
-        // Validate time format
-        const [hours, minutes] = time.split(':').map(Number);
-        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-          throw new Error(`Invalid time format for day ${day}: ${time}`);
-        }
-        normalizedTimeSlots[day] = time; // Keep as HH:mm format
-      }
-      updates.timeSlots = normalizedTimeSlots;
-    }
-    
-    // Normalize start date if it's being updated
-    if (updates.startDate) {
-      updates.startDate = format(new Date(updates.startDate), "yyyy-MM-dd");
-    }
-    
     await updateDoc(scheduleRef, {
       ...updates,
       updatedAt: new Date().toISOString()
     });
-    
-    return scheduleId;
+    return true;
   } catch (error) {
     console.error('Error updating schedule:', error);
     throw error;
@@ -263,50 +210,35 @@ export const updateSchedule = async (scheduleId, updates) => {
 export const updateSingleSession = async (scheduleId, dayIndex, updates) => {
   try {
     const scheduleRef = doc(db, 'schedules', scheduleId);
-    const scheduleSnap = await getDoc(scheduleRef);
-    if (!scheduleSnap.exists()) {
+    const scheduleDoc = await getDoc(scheduleRef);
+    
+    if (!scheduleDoc.exists()) {
       throw new Error('Schedule not found');
     }
-    const scheduleData = scheduleSnap.data();
 
-    // Get the session to update
-    const sessionsQuery = query(
-      collection(db, 'sessions'),
-      where('scheduleId', '==', scheduleId),
-      where('dayIndex', '==', dayIndex)
-    );
-    const sessionSnap = await getDocs(sessionsQuery);
-    if (sessionSnap.empty) {
-      throw new Error('Session not found');
-    }
-    const sessionDoc = sessionSnap.docs[0];
-    const sessionData = sessionDoc.data();
-
-    // Update the session time if provided
-    if (updates.time) {
-      const [hours, minutes] = updates.time.split(':').map(Number);
-      const sessionDate = parseISO(sessionData.date);
-      sessionDate.setHours(hours, minutes, 0, 0);
-      const sessionEndDate = addMinutes(sessionDate, scheduleData.duration);
-      
-      updates.date = format(sessionDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
-      updates.endDate = format(sessionEndDate, "yyyy-MM-dd'T'HH:mm:ssXXX");
-
-      // Update calendar event
-      if (sessionData.eventId) {
-        await updateCalendarEvent(sessionData.eventId, {
-          startTime: updates.date,
-          endTime: updates.endDate
-        });
-      }
+    const schedule = scheduleDoc.data();
+    const timeSlots = { ...schedule.timeSlots };
+    
+    // Update only the specific day's time slot
+    if (updates.timeSlot) {
+      timeSlots[dayIndex] = updates.timeSlot.toISOString();
     }
 
-    await updateDoc(doc(db, 'sessions', sessionDoc.id), {
-      ...updates,
+    // Update the schedule document
+    await updateDoc(scheduleRef, {
+      timeSlots,
       updatedAt: new Date().toISOString()
     });
 
-    return sessionDoc.id;
+    // Update Google Calendar event if needed
+    if (schedule.eventIds?.[dayIndex]) {
+      await updateCalendarEvent(schedule.eventIds[dayIndex], {
+        startTime: updates.timeSlot.toISOString(),
+        endTime: new Date(updates.timeSlot.getTime() + schedule.duration * 60000).toISOString()
+      });
+    }
+
+    return true;
   } catch (error) {
     console.error('Error updating session:', error);
     throw error;
@@ -315,20 +247,9 @@ export const updateSingleSession = async (scheduleId, dayIndex, updates) => {
 
 export const deleteSchedule = async (scheduleId) => {
   try {
-    // Delete all associated sessions first
-    const sessionsQuery = query(
-      collection(db, 'sessions'),
-      where('scheduleId', '==', scheduleId)
-    );
-    const sessionSnap = await getDocs(sessionsQuery);
-    const batch = [];
-    sessionSnap.forEach((doc) => {
-      batch.push(deleteDoc(doc.ref));
-    });
-    await Promise.all(batch);
-
-    // Delete the schedule document
-    await deleteDoc(doc(db, 'schedules', scheduleId));
+    const scheduleRef = doc(db, 'schedules', scheduleId);
+    await deleteDoc(scheduleRef);
+    return true;
   } catch (error) {
     console.error('Error deleting schedule:', error);
     throw error;

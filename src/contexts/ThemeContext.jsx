@@ -38,6 +38,7 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     if (currentUser?.uid) {
+      // Sync settings with Firestore when user is logged in
       const userRef = doc(db, 'users', currentUser.uid);
       const unsubscribe = onSnapshot(userRef, (doc) => {
         if (doc.exists()) {
@@ -48,8 +49,8 @@ export const ThemeProvider = ({ children }) => {
               ...data.settings
             }));
           }
-          if (data.themeMode) {
-            setMode(data.themeMode);
+          if (data.theme) {
+            setMode(data.theme);
           }
         }
       });
@@ -58,30 +59,35 @@ export const ThemeProvider = ({ children }) => {
     }
   }, [currentUser, db]);
 
-  const toggleTheme = () => {
+  const toggleMode = async () => {
     const newMode = mode === 'light' ? 'dark' : 'light';
     setMode(newMode);
+
+    // Save to Firestore if user is logged in
     if (currentUser?.uid) {
       const userRef = doc(db, 'users', currentUser.uid);
-      updateDoc(userRef, { themeMode: newMode }).catch(console.error);
+      await updateDoc(userRef, {
+        theme: newMode
+      });
     }
   };
 
-  const updateSettings = (newSettings) => {
-    setSettings(prev => {
-      const updated = { ...prev, ...newSettings };
-      if (currentUser?.uid) {
-        const userRef = doc(db, 'users', currentUser.uid);
-        updateDoc(userRef, { settings: updated }).catch(console.error);
-      }
-      return updated;
-    });
+  const updateSettings = async (newSettings) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
+
+    // Save to Firestore if user is logged in
+    if (currentUser?.uid) {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        settings: { ...settings, ...newSettings }
+      });
+    }
   };
 
   const value = {
     mode,
+    toggleMode,
     settings,
-    toggleTheme,
     updateSettings
   };
 

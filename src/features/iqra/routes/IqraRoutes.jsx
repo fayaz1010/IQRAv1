@@ -6,6 +6,7 @@ import { SessionProvider } from '../contexts/SessionContext';
 // Lazy load components
 const IqraTeaching = React.lazy(() => import('../components/IqraTeaching'));
 const IqraBookViewer = React.lazy(() => import('../components/IqraBookViewer'));
+const TeachingSession = React.lazy(() => import('../components/teaching/TeachingSession'));
 
 // Loading screen shown while components are loading
 const LoadingScreen = () => (
@@ -28,12 +29,32 @@ const IqraRoutes = () => {
           }
         />
 
+        {/* Active teaching session */}
+        <Route
+          path="/teaching/:studentId"
+          element={
+            <Suspense fallback={<LoadingScreen />}>
+              <IqraTeaching />
+            </Suspense>
+          }
+        />
+
         {/* Book viewer */}
         <Route
           path="/book/:bookId"
           element={
             <Suspense fallback={<LoadingScreen />}>
               <IqraBookViewer />
+            </Suspense>
+          }
+        />
+
+        {/* Teaching session */}
+        <Route
+          path="/teach/:classId"
+          element={
+            <Suspense fallback={<LoadingScreen />}>
+              <TeachingSession />
             </Suspense>
           }
         />

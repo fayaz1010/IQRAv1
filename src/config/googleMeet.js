@@ -78,36 +78,23 @@ export const getCalendarToken = async () => {
   }
 };
 
-export const createGoogleMeet = async (title, startTime, durationMinutes = 60) => {
+export const createGoogleMeet = async (title, startTime, endTime) => {
   try {
-    console.log('Getting access token...');
+    console.log('Getting Calendar token...');
     const accessToken = await getCalendarToken();
     console.log('Access token obtained');
 
-    // Convert to UTC time to avoid timezone issues
-    const start = new Date();
-    start.setSeconds(0, 0); // Reset seconds and milliseconds
-    
-    // Calculate end time
-    const end = new Date(start.getTime() + (durationMinutes * 60 * 1000));
-  
-    console.log('Creating event with times:', {
-      start: start.toISOString(),
-      end: end.toISOString()
-    });
+    // Ensure we have valid ISO strings for start and end times
+    const start = new Date(startTime).toISOString();
+    const end = new Date(endTime).toISOString();
 
     const event = {
       summary: title,
-      start: {
-        dateTime: start.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      },
-      end: {
-        dateTime: end.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-      },
+      description: 'Iqra Teaching Session',
+      start: { dateTime: start },
+      end: { dateTime: end },
       conferenceData: {
-        createRequest: {
+        createRequest: { 
           requestId: Date.now().toString(),
           conferenceSolutionKey: { type: 'hangoutsMeet' }
         }
@@ -122,25 +109,34 @@ export const createGoogleMeet = async (title, startTime, durationMinutes = 60) =
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(event)
       }
     );
 
+    const responseData = await response.json();
+    console.log('Calendar API response:', {
+      status: response.status,
+      ok: response.ok,
+      data: responseData
+    });
+
     if (!response.ok) {
-      const error = await response.json();
-      console.error('Calendar API error details:', error);
-      throw new Error(error.error?.message || 'Failed to create Google Meet');
+      console.error('Calendar API error details:', responseData);
+      throw new Error(responseData.error?.message || 'Failed to create Google Meet');
     }
 
-    const data = await response.json();
-    console.log('Meet created successfully:', data);
+    const meetLink = responseData.conferenceData?.entryPoints?.[0]?.uri;
+    if (!meetLink) {
+      throw new Error('No Meet link in response');
+    }
+
     return {
-      meetLink: data.hangoutLink,
-      eventId: data.id,
-      startTime: start.toISOString(),
-      endTime: end.toISOString()
+      link: meetLink,
+      eventId: responseData.id,
+      startTime: responseData.start.dateTime,
+      endTime: responseData.end.dateTime
     };
   } catch (error) {
     console.error('Error in createGoogleMeet:', error);

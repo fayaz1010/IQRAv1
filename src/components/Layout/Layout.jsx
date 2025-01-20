@@ -45,7 +45,14 @@ const menuItems = {
   student: [
     { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { title: 'My Classes', icon: <ClassIcon />, path: '/classes' },
-    { title: 'Learn', icon: <BookIcon />, path: '/learn' },
+    { 
+      title: 'Learn', 
+      icon: <BookIcon />,
+      children: [
+        { title: 'Lessons', icon: <MenuBookIcon />, path: '/learn' },
+        { title: 'Practice', icon: <AssignmentIcon />, path: '/practice' }
+      ]
+    },
     { title: 'Profile', icon: <PersonIcon />, path: '/profile' },
   ],
   teacher: [

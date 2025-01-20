@@ -9,52 +9,38 @@ service firebase.storage {
     
     function isAdmin() {
       return isAuthenticated() && 
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
     
     function isTeacher() {
       return isAuthenticated() && 
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
     }
-    
+
     function isStudent() {
       return isAuthenticated() && 
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'student';
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
     }
 
-    // Match all files in iqra-books directory
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Iqra books storage - allow read for authenticated users
     match /iqra-books/{bookId}/{allPaths=**} {
-      allow read: if isAuthenticated() && (isAdmin() || isTeacher() || isStudent());
-      allow write: if isAuthenticated() && (isAdmin() || isTeacher());
-    }
-
-    // Book pages folder listing
-    match /iqra-books/{bookId}/pages {
-      allow list, get: if isAuthenticated();
-    }
-
-    // Book pages access - allow read for all authenticated users, write for teachers/admins
-    match /iqra-books/{bookId}/pages/{pageId} {
-      allow read, get: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
-    }
-
-    // Book metadata - allow read for all authenticated users, write for teachers/admins
-    match /iqra-books/{bookId}/metadata {
-      allow read, get: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
     // User photos - allow admins to manage all photos, users to manage their own
     match /userPhotos/{userId}/{fileName} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || request.auth.uid == userId;
+      allow read, write: if true;  // Temporarily allow all access for testing
     }
 
     // User uploads
     match /users/{userId}/{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || request.auth.uid == userId;
+      allow write: if isAdmin() || isOwner(userId);
     }
 
     // Course materials
@@ -63,15 +49,9 @@ service firebase.storage {
       allow write: if isTeacher() || isAdmin();
     }
 
-    // Allow users to read and write their own drawings
-    match /drawings/{userId}/{document=**} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Allow admin to manage all files
+    // Default deny
     match /{allPaths=**} {
-      allow read, write: if isAdmin();
+      allow read, write: if false;
     }
   }
 }

@@ -582,14 +582,12 @@ const Practice = () => {
 
                         <Box display="flex" alignItems="center" gap={1}>
                           <Tooltip title="Previous Page">
-                            <span>
-                              <IconButton
-                                onClick={() => handlePageChange(currentPage - 1)}
-                                disabled={currentPage <= 1}
-                              >
-                                <NavigateBefore />
-                              </IconButton>
-                            </span>
+                            <IconButton
+                              onClick={() => handlePageChange(currentPage - 1)}
+                              disabled={currentPage <= 1}
+                            >
+                              <NavigateBefore />
+                            </IconButton>
                           </Tooltip>
                           
                           <Box sx={{ width: { xs: 60, sm: 80 } }}>
@@ -617,14 +615,12 @@ const Practice = () => {
                           </Typography>
 
                           <Tooltip title="Next Page">
-                            <span>
-                              <IconButton
-                                onClick={() => handlePageChange(currentPage + 1)}
-                                disabled={currentPage >= (selectedBook?.totalPages || 30)}
-                              >
-                                <NavigateNext />
-                              </IconButton>
-                            </span>
+                            <IconButton
+                              onClick={() => handlePageChange(currentPage + 1)}
+                              disabled={currentPage >= (selectedBook?.totalPages || 30)}
+                            >
+                              <NavigateNext />
+                            </IconButton>
                           </Tooltip>
                         </Box>
                       </>

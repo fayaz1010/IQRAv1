@@ -68,6 +68,10 @@ service cloud.firestore {
       return getUserData().children.hasAny(progress.keys());
     }
 
+    function getUpdatedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated() && (
@@ -92,49 +96,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Students collection
-    match /students/{studentId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        isOwner(studentId) ||
-        (isParent() && studentId in getUserData().children)
-      );
-      allow write: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher()
-      );
-    }
-
     // Classes collection
     match /classes/{classId} {
-      // Helper functions for class access
-      function isClassTeacher() {
-        return resource.data.teacherId == request.auth.uid;
-      }
-
-      function isClassStudent() {
-        return request.auth.uid in resource.data.studentIds;
-      }
-
-      // Allow listing classes for authenticated users
-      allow list: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher()
-      );
-
-      // Allow reading individual classes
-      allow get: if isAuthenticated() && (
-        isAdmin() ||
-        isClassTeacher() ||
-        isClassStudent() ||
-        (isParent() && resource.data.studentIds.hasAny(getUserData().children))
-      );
-
       // Teachers and admins can create classes
       allow create: if isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role in ['teacher', 'admin'] &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin'] &&
         request.resource.data.teacherId == request.auth.uid &&
         request.resource.data.keys().hasAll(['name', 'teacherId']) &&
         request.resource.data.name is string &&
@@ -146,6 +113,13 @@ service cloud.firestore {
           (request.resource.data.studentIds is list && request.resource.data.studentIds.size() <= 100)) &&
         (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
         (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is string);
+
+      // Allow read access for teachers, admins, and enrolled students
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && resource.data.studentIds.hasAny([request.auth.uid]))
+      );
 
       // Teachers can update their own classes
       allow update: if isAuthenticated() && (
@@ -171,12 +145,12 @@ service cloud.firestore {
         allow read: if isAuthenticated() && (
           isAdmin() ||
           isTeacherOfClass(classId) ||
-          isOwner(userId)
+          request.auth.uid == userId
         );
         
         allow create, update: if isAuthenticated() && (
           isTeacherOfClass(classId) ||
-          isOwner(userId)
+          request.auth.uid == userId
         );
       }
 
@@ -215,104 +189,29 @@ service cloud.firestore {
         allow read: if isAuthenticated() && (
           isAdmin() ||
           isTeacherOfClass(classId) ||
-          (isStudent() && exists(/databases/$(database)/documents/classes/$(classId)) &&
-           request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds)
+          isStudentInClass(classId)
         );
 
         allow update: if isAuthenticated() && (
           isAdmin() ||
           isTeacherOfClass(classId) ||
-          (isStudent() && exists(/databases/$(database)/documents/classes/$(classId)) &&
-           request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds &&
-           (
-             // Allow students to update their progress
-             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress']) ||
-             // Allow students to add their drawings
-             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['drawings']) &&
-             request.resource.data.drawings[request.auth.uid] is list
-           )
-          )
+          (isStudentInClass(classId) && (
+            // Student can only update specific fields
+            getUpdatedKeys().hasOnly(['attendees']) ||
+            getUpdatedKeys().hasOnly(['studentStatus']) ||
+            getUpdatedKeys().hasOnly(['lastActivity']) ||
+            getUpdatedKeys().hasOnly(['attendees', 'studentStatus']) ||
+            getUpdatedKeys().hasOnly(['attendees', 'lastActivity']) ||
+            getUpdatedKeys().hasOnly(['studentStatus', 'lastActivity']) ||
+            getUpdatedKeys().hasOnly(['attendees', 'studentStatus', 'lastActivity']) ||
+            getUpdatedKeys().hasOnly(['status'])
+          ))
         );
 
         allow delete: if isAuthenticated() && (
           isAdmin() ||
           isTeacherOfClass(classId)
         );
-
-        // Allow access to session drawings
-        match /drawings/{drawingId} {
-          allow read: if isAuthenticated() && (
-            isAdmin() ||
-            (isTeacher() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.teacherId == request.auth.uid) ||
-            (isStudent() && request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentProgress)
-          );
-
-          allow write: if isAuthenticated() && (
-            isAdmin() ||
-            (isTeacher() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.teacherId == request.auth.uid) ||
-            (isStudent() && 
-              request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentProgress &&
-              request.resource.data.studentId == request.auth.uid
-            )
-          );
-        }
-      }
-    }
-
-    // Sessions collection at root level
-    match /sessions/{sessionId} {
-      allow read, list: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        isStudentInSession(resource.data) ||
-        isParentOfStudentInSession(resource.data)
-      );
-      allow create: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher()
-      );
-      allow update: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacherOfSession(resource.data)
-      );
-      allow delete: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacherOfSession(resource.data)
-      );
-    }
-
-    // Assignments collection
-    match /assignments/{assignmentId} {
-      // Allow listing assignments for authenticated users
-      allow list: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        // For students, allow querying their assignments
-        (isStudent() && (
-          request.query.filters.size() == 2 && 
-          'studentId' in request.query.filters &&
-          request.query.filters.studentId == request.auth.uid &&
-          'status' in request.query.filters
-        ))
-      );
-
-      // Allow reading individual assignments
-      allow get: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        (isStudent() && resource.data.studentId == request.auth.uid)
-      );
-      
-      allow create, update, delete: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        (isStudent() && resource.data.studentId == request.auth.uid)
-      );
-
-      // Allow students to submit their assignments
-      match /submissions/{userId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow write: if isAuthenticated() && request.auth.uid == userId;
       }
     }
 
@@ -320,76 +219,73 @@ service cloud.firestore {
     match /schedules/{scheduleId} {
       allow create: if isAuthenticated() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        (getUserData().role in ['teacher', 'admin']) &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin']) &&
         exists(/databases/$(database)/documents/classes/$(request.resource.data.classId)) &&
         get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.teacherId == request.auth.uid;
       
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        (isStudent() && exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
-         request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds)
-      );
+      allow read: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' && resource.data.teacherId == request.auth.uid) ||
+          (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student' && 
+            exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+            request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+          )
+        );
       
-      allow update: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher()
-      );
+      allow update: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
       
-      allow delete: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher()
-      );
+      allow delete: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
     }
 
     // Sessions collection
     match /sessions/{sessionId} {
-      // Helper functions for session access
-      function isSessionParticipant() {
-        return request.auth.uid in resource.data.studentIds;
-      }
-
-      function isSessionTeacher() {
-        return resource.data.teacherId == request.auth.uid;
-      }
-
-      function isStudentInSessionClass() {
-        return resource.data.classId != null && 
-               exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
-               request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds;
-      }
-
-      // List query rule
-      allow list: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        (isStudent() && request.query.limit <= 10)
-      );
-
-      // Read individual document rule
-      allow get: if isAuthenticated() && (
-        isAdmin() ||
-        (isTeacher() && isSessionTeacher()) ||
-        (isStudent() && isStudentInSessionClass())
-      );
-
       allow create: if isAuthenticated() && (
         isAdmin() ||
-        isTeacher()
+        isTeacherOfClass(request.resource.data.classId)
+      );
+
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds)
       );
 
       allow update: if isAuthenticated() && (
         isAdmin() ||
-        (isTeacher() && isSessionTeacher()) ||
-        (isStudent() && 
-          isStudentInSessionClass() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress.' + request.auth.uid])
-        )
+        isTeacherOfClass(resource.data.classId) ||
+        (isStudent() && exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds && (
+          // Allow students to update these fields
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['drawings']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentStatus']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastActivity']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees', 'studentStatus']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees', 'lastActivity']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentStatus', 'lastActivity']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees', 'studentStatus', 'lastActivity'])
+        ))
       );
 
       allow delete: if isAuthenticated() && (
         isAdmin() ||
-        (isTeacher() && isSessionTeacher())
+        isTeacherOfClass(resource.data.classId)
       );
 
       // Allow access to session drawings
@@ -413,23 +309,18 @@ service cloud.firestore {
 
     // Drawings collection
     match /drawings/{drawingId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        isStudent() ||
-        isParent()
-      );
-
-      allow create, update: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher() ||
-        (isStudent() && request.resource.data.studentId == request.auth.uid)
-      );
-
-      allow delete: if isAuthenticated() && (
-        isAdmin() ||
-        isTeacher()
-      );
+      allow read: if isAuthenticated() &&
+        (isTeacherOfClass(resource.data.classId) || 
+         isStudentInClass(resource.data.classId) ||
+         (isStudent() && resource.data.studentId == request.auth.uid));
+      
+      allow create, update: if isAuthenticated() &&
+        (isTeacherOfClass(request.resource.data.classId) || 
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
+      
+      allow delete: if isAuthenticated() &&
+        (isTeacherOfClass(resource.data.classId) || 
+         (isStudent() && resource.data.studentId == request.auth.uid));
     }
 
     // Course materials collection
@@ -448,7 +339,7 @@ service cloud.firestore {
       // Only teachers and admins can create courses
       allow create: if isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserData().role in ['teacher', 'admin'] &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin'] &&
         request.resource.data.teacherId == request.auth.uid;
       
       // Teachers can update their own courses, admins can update any course
@@ -481,6 +372,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Assignments collection
+    match /assignments/{assignmentId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isTeacher() || isAdmin();
+
+      // Allow students to submit their assignments
+      match /submissions/{userId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
     // Meet credentials collection
     match /meetCredentials/{userId} {
       allow read, write: if isOwner(userId);
@@ -507,13 +410,69 @@ service cloud.firestore {
     // Iqra books collection
     match /iqra-books/{bookId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
+      allow write: if isAdmin();
     }
 
     // Student progress collection
     match /student-progress/{progressId} {
       allow read: if isAuthenticated();
       allow write: if isTeacher() || isAdmin();
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // Messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Sessions collection - Additional rules for queries
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && (
+          // Allow reading sessions for classes the student is enrolled in
+          exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+        ))
+      );
+      
+      // Allow students to read their attendance and feedback
+      match /attendance/{userId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacher() ||
+          request.auth.uid == userId
+        );
+      }
+
+      // Allow students to read and write their feedback
+      match /feedback/{userId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacher() ||
+          request.auth.uid == userId
+        );
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
   }
 }
