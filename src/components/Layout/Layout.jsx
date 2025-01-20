@@ -49,65 +49,20 @@ const menuItems = {
       title: 'Learn', 
       icon: <BookIcon />,
       children: [
-        { title: 'Lessons', icon: <MenuBookIcon />, path: '/learn' },
-        { title: 'Practice', icon: <AssignmentIcon />, path: '/practice' }
+        { title: 'Practice', icon: <MenuBookIcon />, path: '/practice' },
+        { title: 'Materials', icon: <LibraryBooksIcon />, path: '/materials' },
       ]
     },
-    { title: 'Profile', icon: <PersonIcon />, path: '/profile' },
+    { title: 'Schedule', icon: <CalendarIcon />, path: '/schedule' },
+    { title: 'Session History', icon: <AssignmentIcon />, path: '/history' },
   ],
   teacher: [
-    { 
-      title: 'Dashboard', 
-      icon: <DashboardIcon />, 
-      path: '/teacher' 
-    },
-    {
-      title: 'Teaching',
-      icon: <SchoolIcon />,
-      children: [
-        { 
-          title: 'Active Sessions', 
-          icon: <MenuBookIcon />, 
-          path: '/classes/iqra' 
-        },
-        { 
-          title: 'Courses', 
-          icon: <LibraryBooksIcon />, 
-          path: '/courses' 
-        },
-        { 
-          title: 'Materials', 
-          icon: <AssignmentIcon />, 
-          path: '/materials' 
-        },
-      ]
-    },
-    {
-      title: 'Management',
-      icon: <ClassIcon />,
-      children: [
-        { 
-          title: 'Classes', 
-          icon: <ClassIcon />, 
-          path: '/classes' 
-        },
-        { 
-          title: 'Schedule', 
-          icon: <CalendarIcon />, 
-          path: '/schedule' 
-        },
-      ]
-    },
-    { 
-      title: 'Profile', 
-      icon: <PersonIcon />, 
-      path: '/profile' 
-    },
-    { 
-      title: 'Settings', 
-      icon: <SettingsIcon />, 
-      path: '/settings' 
-    },
+    { title: 'Dashboard', icon: <DashboardIcon />, path: '/teacher/dashboard' },
+    { title: 'My Classes', icon: <ClassIcon />, path: '/classes' },
+    { title: 'Students', icon: <SchoolIcon />, path: '/teacher/students' },
+    { title: 'Schedule', icon: <CalendarIcon />, path: '/schedule' },
+    { title: 'Materials', icon: <LibraryBooksIcon />, path: '/materials' },
+    { title: 'Session History', icon: <AssignmentIcon />, path: '/history' },
   ],
   admin: [
     { title: 'Dashboard', icon: <DashboardIcon />, path: '/admin' },

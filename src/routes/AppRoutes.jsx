@@ -45,9 +45,9 @@ const AppRoutes = () => {
     
     switch (currentUser.role) {
       case 'admin':
-        return '/admin';
+        return '/admin/dashboard';
       case 'teacher':
-        return '/teacher';
+        return '/teacher/dashboard';
       default:
         return '/dashboard';
     }
@@ -167,7 +167,7 @@ const AppRoutes = () => {
 
         {/* Teacher routes */}
         <Route
-          path="/teacher"
+          path="/teacher/dashboard"
           element={
             <ProtectedRoute allowedRoles={['teacher']}>
               <Suspense fallback={<LoadingScreen />}>
@@ -229,7 +229,7 @@ const AppRoutes = () => {
 
         {/* Admin routes */}
         <Route
-          path="/admin"
+          path="/admin/dashboard"
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <Suspense fallback={<LoadingScreen />}>
