@@ -1,0 +1,1 @@
+import{bb as a,bc as m,bd as u}from"./index-NbX1JcnA.js";const c=a();function n({props:t,name:r,defaultTheme:o,themeId:s}){let e=m(o);return s&&(e=e[s]||e),u({theme:e,name:r,props:t})}export{c as s,n as u};

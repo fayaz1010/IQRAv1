@@ -49,8 +49,8 @@ export const ThemeProvider = ({ children }) => {
               ...data.settings
             }));
           }
-          if (data.themeMode) {
-            setMode(data.themeMode);
+          if (data.theme) {
+            setMode(data.theme);
           }
         }
       });
@@ -59,41 +59,34 @@ export const ThemeProvider = ({ children }) => {
     }
   }, [currentUser, db]);
 
-  const updateSettings = async (newSettings) => {
-    try {
-      setSettings(prev => ({ ...prev, ...newSettings }));
-      
-      if (currentUser?.uid) {
-        const userRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userRef, {
-          settings: newSettings
-        });
-      }
-    } catch (error) {
-      console.error('Error updating settings:', error);
-      throw error;
+  const toggleMode = async () => {
+    const newMode = mode === 'light' ? 'dark' : 'light';
+    setMode(newMode);
+
+    // Save to Firestore if user is logged in
+    if (currentUser?.uid) {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        theme: newMode
+      });
     }
   };
 
-  const toggleTheme = async () => {
-    const newMode = mode === 'light' ? 'dark' : 'light';
-    setMode(newMode);
-    
+  const updateSettings = async (newSettings) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
+
+    // Save to Firestore if user is logged in
     if (currentUser?.uid) {
-      try {
-        const userRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userRef, {
-          themeMode: newMode
-        });
-      } catch (error) {
-        console.error('Error updating theme mode:', error);
-      }
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        settings: { ...settings, ...newSettings }
+      });
     }
   };
 
   const value = {
     mode,
-    toggleTheme,
+    toggleMode,
     settings,
     updateSettings
   };
@@ -104,3 +97,5 @@ export const ThemeProvider = ({ children }) => {
     </ThemeContext.Provider>
   );
 };
+
+export default ThemeProvider;

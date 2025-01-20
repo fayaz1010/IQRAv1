@@ -1,7 +1,7 @@
 import { Box, Card, CardContent, Typography, CircularProgress } from '@mui/material';
 import { motion } from 'framer-motion';
 
-const StatsCard = ({ title, value, icon, color, loading = false, prefix = '', suffix = '' }) => {
+const StatsCard = ({ title, value, icon, color, loading = false, prefix = '', suffix = '', onClick }) => {
   return (
     <Card
       component={motion.div}
@@ -11,7 +11,12 @@ const StatsCard = ({ title, value, icon, color, loading = false, prefix = '', su
         height: '100%',
         background: `linear-gradient(135deg, ${color}15 0%, #ffffff 100%)`,
         borderLeft: `4px solid ${color}`,
+        cursor: onClick ? 'pointer' : 'default',
+        '&:hover': onClick ? {
+          boxShadow: 3,
+        } : {},
       }}
+      onClick={onClick}
     >
       <CardContent>
         <Box display="flex" justifyContent="space-between" alignItems="center">

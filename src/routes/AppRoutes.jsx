@@ -1,20 +1,32 @@
 import React, { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { UserProvider } from '../contexts/UserContext';
+import { SessionProvider } from '../features/iqra/contexts/SessionContext';
 import Layout from '../components/Layout/Layout';
 import { CircularProgress, Box } from '@mui/material';
 
 // Lazy load components
-const Dashboard = React.lazy(() => import('../pages/Dashboard'));
+const StudentDashboard = React.lazy(() => import('../pages/dashboard/StudentDashboard'));
+const Session = React.lazy(() => import('../pages/Session'));
 const Login = React.lazy(() => import('../pages/auth/Login'));
 const Register = React.lazy(() => import('../pages/auth/Register'));
 const Profile = React.lazy(() => import('../pages/Profile'));
 const Schedule = React.lazy(() => import('../pages/Schedule'));
 const Learn = React.lazy(() => import('../pages/Learn'));
+const Practice = React.lazy(() => import('../pages/Practice'));
 const AdminDashboard = React.lazy(() => import('../pages/admin/Dashboard'));
+const ManageUsers = React.lazy(() => import('../pages/admin/ManageUsers'));
 const TeacherDashboard = React.lazy(() => import('../pages/teacher/Dashboard'));
+const LandingPage = React.lazy(() => import('../pages/public/LandingPage'));
+const Settings = React.lazy(() => import('../pages/settings/Settings'));
+const Classes = React.lazy(() => import('../pages/Classes'));
+const Courses = React.lazy(() => import('../pages/Courses'));
+const Materials = React.lazy(() => import('../pages/Materials'));
+const IqraRoutes = React.lazy(() => import('../features/iqra/routes/IqraRoutes'));
+const SessionHistory = React.lazy(() => import('../pages/SessionHistory'));
 
-// Loading component
+// Loading screen
 const LoadingScreen = () => (
   <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
     <CircularProgress />
@@ -22,146 +34,254 @@ const LoadingScreen = () => (
 );
 
 const AppRoutes = () => {
-  const { user, userRole, loading } = useAuth();
+  const { currentUser, loading } = useAuth();
 
-  // Show loading screen while auth state is being determined
   if (loading) {
     return <LoadingScreen />;
   }
 
+  const getDashboardRoute = () => {
+    if (!currentUser) return '/';
+    
+    switch (currentUser.role) {
+      case 'admin':
+        return '/admin/dashboard';
+      case 'teacher':
+        return '/teacher/dashboard';
+      default:
+        return '/dashboard';
+    }
+  };
+
   // Protected route wrapper
-  const ProtectedRoute = ({ children, allowedRoles }) => {
-    if (!user) {
-      return <Navigate to="/" replace />;
+  const ProtectedRoute = ({ children, allowedRoles = [] }) => {
+    if (!currentUser) {
+      return <Navigate to="/login" />;
     }
 
-    if (allowedRoles && !allowedRoles.includes(userRole)) {
-      // Redirect to appropriate dashboard based on role
-      switch (userRole) {
-        case 'admin':
-          return <Navigate to="/admin" replace />;
-        case 'teacher':
-          return <Navigate to="/teacher" replace />;
-        default:
-          return <Navigate to="/dashboard" replace />;
-      }
+    if (allowedRoles.length > 0 && !allowedRoles.includes(currentUser.role)) {
+      return <Navigate to={getDashboardRoute()} />;
     }
 
     return <Layout>{children}</Layout>;
   };
 
-  // Auth route wrapper (for login/register pages)
-  const AuthRoute = ({ children }) => {
-    if (user) {
-      // Redirect to appropriate dashboard based on role
-      switch (userRole) {
-        case 'admin':
-          return <Navigate to="/admin" replace />;
-        case 'teacher':
-          return <Navigate to="/teacher" replace />;
-        default:
-          return <Navigate to="/dashboard" replace />;
-      }
-    }
-    return children;
-  };
-
   return (
-    <Routes>
-      {/* Auth Routes */}
-      <Route
-        path="/login"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <AuthRoute>
-              <Login />
-            </AuthRoute>
-          </Suspense>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <AuthRoute>
-              <Register />
-            </AuthRoute>
-          </Suspense>
-        }
-      />
+    <UserProvider>
+      <Routes>
+        {/* Public routes */}
+        <Route
+          path="/"
+          element={
+            currentUser ? (
+              <Navigate to={getDashboardRoute()} />
+            ) : (
+              <Suspense fallback={<LoadingScreen />}>
+                <LandingPage />
+              </Suspense>
+            )
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            currentUser ? (
+              <Navigate to={getDashboardRoute()} />
+            ) : (
+              <Suspense fallback={<LoadingScreen />}>
+                <Login />
+              </Suspense>
+            )
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            currentUser ? (
+              <Navigate to={getDashboardRoute()} />
+            ) : (
+              <Suspense fallback={<LoadingScreen />}>
+                <Register />
+              </Suspense>
+            )
+          }
+        />
 
-      {/* Student Routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
+        {/* Student routes */}
+        <Route
+          path="/dashboard"
+          element={
             <ProtectedRoute allowedRoles={['student']}>
-              <Dashboard />
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionProvider>
+                  <StudentDashboard />
+                </SessionProvider>
+              </Suspense>
             </ProtectedRoute>
-          </Suspense>
-        }
-      />
-      <Route
-        path="/schedule"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
+          }
+        />
+        <Route
+          path="/session/:sessionId"
+          element={
             <ProtectedRoute allowedRoles={['student']}>
-              <Schedule />
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionProvider>
+                  <Session />
+                </SessionProvider>
+              </Suspense>
             </ProtectedRoute>
-          </Suspense>
-        }
-      />
-      <Route
-        path="/learn"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
+          }
+        />
+        <Route
+          path="/practice"
+          element={
             <ProtectedRoute allowedRoles={['student']}>
-              <Learn />
+              <Suspense fallback={<LoadingScreen />}>
+                <Practice />
+              </Suspense>
             </ProtectedRoute>
-          </Suspense>
-        }
-      />
+          }
+        />
 
-      {/* Teacher Routes */}
-      <Route
-        path="/teacher/*"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['teacher']}>
-              <TeacherDashboard />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Admin Routes */}
-      <Route
-        path="/admin/*"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          </Suspense>
-        }
-      />
-
-      {/* Common Routes */}
-      <Route
-        path="/profile"
-        element={
-          <Suspense fallback={<LoadingScreen />}>
+        {/* Common routes */}
+        <Route
+          path="/profile"
+          element={
             <ProtectedRoute allowedRoles={['student', 'teacher', 'admin']}>
-              <Profile />
+              <Suspense fallback={<LoadingScreen />}>
+                <Profile />
+              </Suspense>
             </ProtectedRoute>
-          </Suspense>
-        }
-      />
+          }
+        />
+        <Route
+          path="/sessions/history"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'teacher', 'admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionHistory />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
 
-      {/* Default Routes */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+        {/* Teacher routes */}
+        <Route
+          path="/teacher/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <TeacherDashboard />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/courses"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Courses />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/materials"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Materials />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/schedule"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Schedule />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/classes"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'student']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Classes />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sessions/history"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <SessionHistory />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin routes */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <AdminDashboard />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <ManageUsers />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Settings />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute allowedRoles={['teacher', 'admin']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <Settings />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Iqra routes */}
+        <Route
+          path="/classes/iqra/*"
+          element={
+            <ProtectedRoute allowedRoles={['teacher']}>
+              <Suspense fallback={<LoadingScreen />}>
+                <IqraRoutes />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </UserProvider>
   );
 };
 

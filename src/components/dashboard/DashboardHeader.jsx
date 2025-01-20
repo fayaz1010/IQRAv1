@@ -1,32 +1,31 @@
 import { useState } from 'react';
 import {
   Box,
-  Typography,
-  Avatar,
-  Chip,
   IconButton,
   Menu,
   MenuItem,
   Divider,
   useTheme,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  AccountCircle as AccountIcon,
   Settings as SettingsIcon,
   ExitToApp as LogoutIcon,
   Brightness4 as DarkModeIcon,
   Brightness7 as LightModeIcon,
+  Menu as MenuIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme as useAppTheme } from '../../contexts/ThemeContext';
+import User from '../user/User';
 
 const DashboardHeader = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
-  const { mode, toggleTheme } = useAppTheme();
+  const { mode, toggleMode } = useAppTheme();
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleMenu = (event) => {
@@ -46,103 +45,85 @@ const DashboardHeader = () => {
     }
   };
 
-  const getRoleColor = (role) => {
-    switch (role) {
-      case 'admin':
-        return 'error';
-      case 'teacher':
-        return 'primary';
-      case 'student':
-        return 'success';
-      default:
-        return 'default';
-    }
-  };
-
   return (
     <Box
       sx={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        mb: 3,
-        p: 2,
-        backgroundColor: theme.palette.background.paper,
-        borderRadius: 1,
-        boxShadow: 1,
+        width: '100%',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Avatar
-          src={currentUser?.photoURL}
-          alt={currentUser?.displayName || currentUser?.email}
-          sx={{ width: 56, height: 56, boxShadow: 2 }}
-        >
-          {(currentUser?.displayName || currentUser?.email || '?')[0].toUpperCase()}
-        </Avatar>
-        <Box>
-          <Typography variant="h6">
-            {currentUser?.displayName || currentUser?.email}
-          </Typography>
-          <Chip
-            label={currentUser?.role?.toUpperCase() || 'USER'}
-            color={getRoleColor(currentUser?.role)}
-            size="small"
-            sx={{ mt: 0.5 }}
-          />
-        </Box>
+      <Box sx={{ visibility: 'hidden' }}>
+        {/* Placeholder to help with centering */}
+        <IconButton disabled>
+          <MenuIcon />
+        </IconButton>
       </Box>
 
-      <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {/* Theme Toggle */}
-          <Tooltip title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
-            <IconButton onClick={toggleTheme} color="inherit">
-              {mode === 'light' ? <DarkModeIcon /> : <LightModeIcon />}
-            </IconButton>
-          </Tooltip>
+      <Typography
+        variant="h4"
+        component="div"
+        sx={{
+          fontWeight: 700,
+          textAlign: 'center',
+          background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          letterSpacing: '0.1em'
+        }}
+      >
+        IQRA
+      </Typography>
 
-          {/* Profile Menu */}
-          <IconButton
-            size="large"
-            aria-label="account menu"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
-            onClick={handleMenu}
-            color="inherit"
-          >
-            <AccountIcon />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Tooltip title={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`}>
+          <IconButton onClick={toggleMode} color="inherit">
+            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
           </IconButton>
-          <Menu
-            id="menu-appbar"
-            anchorEl={anchorEl}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'right',
-            }}
-            keepMounted
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            open={Boolean(anchorEl)}
-            onClose={handleClose}
-          >
-            <MenuItem onClick={() => { handleClose(); navigate('/profile'); }}>
-              <AccountIcon sx={{ mr: 1 }} fontSize="small" />
-              Profile
-            </MenuItem>
-            <MenuItem onClick={() => { handleClose(); navigate('/settings'); }}>
-              <SettingsIcon sx={{ mr: 1 }} fontSize="small" />
-              Settings
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={() => { handleClose(); handleLogout(); }}>
-              <LogoutIcon sx={{ mr: 1 }} fontSize="small" />
-              Logout
-            </MenuItem>
-          </Menu>
-        </Box>
+        </Tooltip>
+
+        <User
+          userData={currentUser}
+          variant="compact"
+          showProgress={false}
+          onClick={handleMenu}
+        />
+
+        <Menu
+          anchorEl={anchorEl}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          keepMounted
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+          open={Boolean(anchorEl)}
+          onClose={handleClose}
+        >
+          <MenuItem onClick={() => {
+            handleClose();
+            navigate('/profile');
+          }}>
+            Profile
+          </MenuItem>
+          <MenuItem onClick={() => {
+            handleClose();
+            navigate('/settings');
+          }}>
+            Settings
+          </MenuItem>
+          <Divider />
+          <MenuItem onClick={() => {
+            handleClose();
+            handleLogout();
+          }}>
+            Logout
+          </MenuItem>
+        </Menu>
       </Box>
     </Box>
   );

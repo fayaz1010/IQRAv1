@@ -12,11 +12,10 @@ import {
   ListItemIcon,
   ListItemText,
   ListItemButton,
-  Collapse,
   useTheme,
   useMediaQuery,
   Tooltip,
-  alpha,
+  Collapse,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -24,21 +23,16 @@ import {
   Dashboard as DashboardIcon,
   School as SchoolIcon,
   Book as BookIcon,
-  AccountCircle as AccountIcon,
-  Schedule as ScheduleIcon,
-  People as PeopleIcon,
-  Settings as SettingsIcon,
-  ExpandLess,
-  ExpandMore,
-  LiveTv as LiveTvIcon,
-  Assignment as AssignmentIcon,
-  Assessment as AssessmentIcon,
-  Notifications as NotificationsIcon,
-  Message as MessageIcon,
-  AdminPanelSettings as AdminIcon,
+  Person as PersonIcon,
   Class as ClassIcon,
   CalendarMonth as CalendarIcon,
-  Person as PersonIcon,
+  Settings as SettingsIcon,
+  AdminPanelSettings as AdminIcon,
+  LibraryBooks as LibraryBooksIcon,
+  MenuBook as MenuBookIcon,
+  Assignment as AssignmentIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -46,155 +40,56 @@ import DashboardHeader from '../dashboard/DashboardHeader';
 
 const drawerWidth = 280;
 
+// Enhanced menu structure with sub-items and categories
 const menuItems = {
   student: [
-    {
-      title: 'Home',
-      icon: <DashboardIcon />,
-      path: '/dashboard',
-    },
-    {
-      title: 'Schedule & Classes',
-      icon: <ScheduleIcon />,
-      path: '/schedule',
-      items: [
-        { title: 'My Class Calendar', path: '/schedule/calendar' },
-        { title: 'Join Live Class', path: '/schedule/join' },
-        { title: 'Available Teachers', path: '/schedule/teachers' },
-        { title: 'Request Class', path: '/schedule/request' },
-      ],
-    },
-    {
-      title: 'Learn',
+    { title: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+    { title: 'My Classes', icon: <ClassIcon />, path: '/classes' },
+    { 
+      title: 'Learn', 
       icon: <BookIcon />,
-      path: '/learn',
-      items: [
-        { title: 'Arabic Alphabets', path: '/learn/alphabets' },
-        { title: 'Iqra Books', path: '/learn/iqra' },
-        { title: 'Practice', path: '/learn/practice' },
-      ],
+      children: [
+        { title: 'Practice', icon: <MenuBookIcon />, path: '/practice' },
+        { title: 'Materials', icon: <LibraryBooksIcon />, path: '/materials' },
+      ]
     },
-    {
-      title: 'Profile',
-      icon: <PersonIcon />,
-      path: '/profile',
-      items: [
-        { title: 'Personal Info', path: '/profile/info' },
-        { title: 'Learning Stats', path: '/profile/stats' },
-        { title: 'Settings', path: '/profile/settings' },
-      ],
-    },
+    { title: 'Schedule', icon: <CalendarIcon />, path: '/schedule' },
+    { title: 'Session History', icon: <AssignmentIcon />, path: '/history' },
   ],
   teacher: [
-    {
-      title: 'Home',
-      icon: <DashboardIcon />,
-      path: '/dashboard',
-    },
-    {
-      title: 'Schedule Management',
-      icon: <CalendarIcon />,
-      path: '/schedule',
-      items: [
-        { title: 'Teaching Calendar', path: '/schedule/calendar' },
-        { title: 'Available Slots', path: '/schedule/slots' },
-        { title: 'Class Requests', path: '/schedule/requests' },
-        { title: 'Templates', path: '/schedule/templates' },
-      ],
-    },
-    {
-      title: 'Classes',
-      icon: <ClassIcon />,
-      path: '/classes',
-      items: [
-        { title: 'Start Live Class', path: '/classes/live' },
-        { title: 'Preparation', path: '/classes/prep' },
-        { title: 'Whiteboard', path: '/classes/whiteboard' },
-        { title: 'Recordings', path: '/classes/recordings' },
-      ],
-    },
-    {
-      title: 'Students',
-      icon: <PeopleIcon />,
-      path: '/students',
-      items: [
-        { title: 'Student List', path: '/students/list' },
-        { title: 'Progress Tracking', path: '/students/progress' },
-        { title: 'Attendance', path: '/students/attendance' },
-      ],
-    },
-    {
-      title: 'Profile',
-      icon: <PersonIcon />,
-      path: '/profile',
-      items: [
-        { title: 'Teaching Profile', path: '/profile/teaching' },
-        { title: 'Calendar Settings', path: '/profile/calendar' },
-        { title: 'Availability', path: '/profile/availability' },
-      ],
-    },
+    { title: 'Dashboard', icon: <DashboardIcon />, path: '/teacher/dashboard' },
+    { title: 'My Classes', icon: <ClassIcon />, path: '/classes' },
+    { title: 'Students', icon: <SchoolIcon />, path: '/teacher/students' },
+    { title: 'Schedule', icon: <CalendarIcon />, path: '/schedule' },
+    { title: 'Materials', icon: <LibraryBooksIcon />, path: '/materials' },
+    { title: 'Session History', icon: <AssignmentIcon />, path: '/history' },
   ],
   admin: [
-    {
-      title: 'Home',
-      icon: <DashboardIcon />,
-      path: '/admin',
-    },
-    {
-      title: 'User Management',
-      icon: <PeopleIcon />,
-      path: '/admin/users',
-      items: [
-        { title: 'Teachers', path: '/admin/users/teachers' },
-        { title: 'Students', path: '/admin/users/students' },
-        { title: 'Parents', path: '/admin/users/parents' },
-        { title: 'Admins', path: '/admin/users/admins' },
-      ],
-    },
-    {
-      title: 'Course Management',
-      icon: <SchoolIcon />,
-      path: '/admin/courses',
-      items: [
-        { title: 'Course Approval', path: '/admin/courses/approval' },
-        { title: 'Curriculum', path: '/admin/courses/curriculum' },
-        { title: 'Quality Control', path: '/admin/courses/quality' },
-      ],
-    },
-    {
-      title: 'Settings',
-      icon: <SettingsIcon />,
-      path: '/admin/settings',
-      items: [
-        { title: 'System Settings', path: '/admin/settings/system' },
-        { title: 'Notifications', path: '/admin/settings/notifications' },
-        { title: 'Backup', path: '/admin/settings/backup' },
-      ],
-    },
+    { title: 'Dashboard', icon: <DashboardIcon />, path: '/admin' },
+    { title: 'Settings', icon: <SettingsIcon />, path: '/admin/settings' },
+    { title: 'Users', icon: <AdminIcon />, path: '/admin/users' },
   ],
 };
 
 const Layout = ({ children }) => {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [open, setOpen] = useState(!isMobile);
+  const [expandedMenus, setExpandedMenus] = useState({});
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const [open, setOpen] = useState(true);
-  const [expandedItem, setExpandedItem] = useState('');
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const userRole = currentUser?.role || 'student';
 
-  // Close drawer on mobile by default
   useEffect(() => {
-    if (isMobile) {
-      setOpen(false);
-    }
+    setOpen(!isMobile);
   }, [isMobile]);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
   };
 
-  const handleItemClick = (path) => {
+  const handleMenuClick = (path) => {
     navigate(path);
     if (isMobile) {
       setOpen(false);
@@ -202,102 +97,64 @@ const Layout = ({ children }) => {
   };
 
   const handleExpandClick = (title) => {
-    setExpandedItem(expandedItem === title ? '' : title);
-  };
-
-  const isPathActive = (path) => {
-    return location.pathname.startsWith(path);
+    setExpandedMenus(prev => ({
+      ...prev,
+      [title]: !prev[title]
+    }));
   };
 
   const renderMenuItem = (item) => {
-    const isActive = isPathActive(item.path);
-    const isExpanded = expandedItem === item.title;
-
-    return (
-      <Box key={item.title} sx={{ mb: 0.5 }}>
-        <ListItemButton
-          onClick={() => {
-            if (item.items) {
-              handleExpandClick(item.title);
-            } else {
-              handleItemClick(item.path);
-            }
-          }}
-          sx={{
-            borderRadius: 1,
-            mb: 0.5,
-            backgroundColor: isActive
-              ? alpha(theme.palette.primary.main, 0.1)
-              : 'transparent',
-            color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
-            '&:hover': {
-              backgroundColor: alpha(theme.palette.primary.main, 0.05),
-            },
-          }}
-        >
-          <ListItemIcon
-            sx={{
-              color: isActive ? theme.palette.primary.main : theme.palette.text.primary,
-            }}
-          >
-            {item.icon}
-          </ListItemIcon>
-          <ListItemText primary={item.title} />
-          {item.items && (isExpanded ? <ExpandLess /> : <ExpandMore />)}
-        </ListItemButton>
-        {item.items && (
-          <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+    if (item.children) {
+      return (
+        <div key={item.title}>
+          <ListItemButton onClick={() => handleExpandClick(item.title)}>
+            <ListItemIcon>{item.icon}</ListItemIcon>
+            <ListItemText primary={item.title} />
+            {expandedMenus[item.title] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          </ListItemButton>
+          <Collapse in={expandedMenus[item.title]} timeout="auto" unmountOnExit>
             <List component="div" disablePadding>
-              {item.items.map((subItem) => (
+              {item.children.map((child) => (
                 <ListItemButton
-                  key={subItem.title}
-                  onClick={() => handleItemClick(subItem.path)}
-                  sx={{
-                    pl: 4,
-                    py: 0.5,
-                    borderRadius: 1,
-                    ml: 2,
-                    backgroundColor: location.pathname === subItem.path
-                      ? alpha(theme.palette.primary.main, 0.1)
-                      : 'transparent',
-                    color: location.pathname === subItem.path
-                      ? theme.palette.primary.main
-                      : theme.palette.text.primary,
-                    '&:hover': {
-                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                    },
-                  }}
+                  key={child.title}
+                  sx={{ pl: 4 }}
+                  selected={location.pathname === child.path}
+                  onClick={() => handleMenuClick(child.path)}
                 >
-                  <ListItemText 
-                    primary={subItem.title}
-                    primaryTypographyProps={{
-                      variant: 'body2',
-                      sx: { fontWeight: location.pathname === subItem.path ? 600 : 400 }
-                    }}
-                  />
+                  <ListItemIcon>{child.icon}</ListItemIcon>
+                  <ListItemText primary={child.title} />
                 </ListItemButton>
               ))}
             </List>
           </Collapse>
-        )}
-      </Box>
+        </div>
+      );
+    }
+
+    return (
+      <ListItemButton
+        key={item.title}
+        selected={location.pathname === item.path}
+        onClick={() => handleMenuClick(item.path)}
+      >
+        <ListItemIcon>{item.icon}</ListItemIcon>
+        <ListItemText primary={item.title} />
+      </ListItemButton>
     );
   };
 
-  const userRole = currentUser?.role || 'student';
-  const currentMenuItems = menuItems[userRole] || [];
-
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar
         position="fixed"
+        elevation={0}
         sx={{
           backgroundColor: theme.palette.background.paper,
           color: theme.palette.text.primary,
-          boxShadow: 1,
-          width: { md: `calc(100% - ${open ? drawerWidth : 0}px)` },
-          ml: { md: `${open ? drawerWidth : 0}px` },
-          transition: theme.transitions.create(['width', 'margin'], {
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: { sm: `${drawerWidth}px` },
+          transition: theme.transitions.create(['margin', 'width'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.leavingScreen,
           }),
@@ -306,10 +163,10 @@ const Layout = ({ children }) => {
         <Toolbar>
           <IconButton
             color="inherit"
-            aria-label="toggle drawer"
+            aria-label="open drawer"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: 'flex' }}
+            sx={{ mr: 2, display: { sm: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
@@ -318,40 +175,46 @@ const Layout = ({ children }) => {
       </AppBar>
 
       <Drawer
-        variant={isMobile ? 'temporary' : 'persistent'}
-        anchor="left"
+        variant={isMobile ? 'temporary' : 'permanent'}
         open={open}
         onClose={handleDrawerToggle}
+        ModalProps={{
+          keepMounted: true,
+        }}
         sx={{
-          width: drawerWidth,
-          flexShrink: 0,
+          display: { xs: 'block', sm: 'block' },
           '& .MuiDrawer-paper': {
-            width: drawerWidth,
             boxSizing: 'border-box',
+            width: drawerWidth,
             backgroundColor: theme.palette.background.default,
             borderRight: `1px solid ${theme.palette.divider}`,
           },
         }}
       >
-        <Toolbar
-          sx={{
-            display: 'flex',
+        <Toolbar 
+          sx={{ 
+            display: 'flex', 
+            justifyContent: 'center',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            px: [1],
+            py: 1
           }}
         >
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, ml: 2 }}>
-            IQRA
-          </Typography>
-          <IconButton onClick={handleDrawerToggle}>
-            <ChevronLeftIcon />
-          </IconButton>
+          <Box
+            component="img"
+            src="/assets/logo.png"
+            alt="Iqra App Logo"
+            sx={{
+              height: 64,
+              width: 'auto',
+              mb: 2
+            }}
+          />
         </Toolbar>
-        <Divider />
-        <List sx={{ px: 2, py: 1 }}>
-          {currentMenuItems.map(renderMenuItem)}
-        </List>
+        <Box sx={{ overflow: 'auto' }}>
+          <List>
+            {menuItems[userRole] && menuItems[userRole].map((item) => renderMenuItem(item))}
+          </List>
+        </Box>
       </Drawer>
 
       <Box
@@ -359,10 +222,13 @@ const Layout = ({ children }) => {
         sx={{
           flexGrow: 1,
           p: 3,
-          width: { md: `calc(100% - ${drawerWidth}px)` },
-          mt: 8,
-          backgroundColor: theme.palette.background.default,
-          minHeight: '100vh',
+          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          ml: { sm: `${drawerWidth}px` },
+          mt: '64px',
+          transition: theme.transitions.create(['margin', 'width'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         {children}

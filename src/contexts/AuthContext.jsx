@@ -5,10 +5,12 @@ import {
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  getIdTokenResult,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import { httpsCallable, getFunctions } from 'firebase/functions';
 
 const AuthContext = createContext();
 
@@ -19,6 +21,56 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const functions = getFunctions();
+
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      try {
+        if (user && mounted) {
+          console.log('Auth state changed - user found:', user.uid);
+          // Get user data from Firestore
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists() && mounted) {
+            const userData = userDoc.data();
+            console.log('User data found:', userData.role);
+            
+            // Get the user's ID token result to check custom claims
+            const tokenResult = await getIdTokenResult(user, true);
+            const role = tokenResult.claims.role || userData.role || 'student';
+            
+            if (mounted) {
+              setCurrentUser({ 
+                ...user, 
+                ...userData,
+                role: userData.role || 'student'
+              });
+            }
+          } else if (mounted) {
+            console.warn('No user document found for:', user.uid);
+            setCurrentUser({ ...user, role: 'student' });
+          }
+        } else if (mounted) {
+          console.log('No user found in auth state change');
+          setCurrentUser(null);
+        }
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        if (mounted) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   async function signup(email, password, role = 'student') {
     try {
@@ -26,12 +78,23 @@ export function AuthProvider({ children }) {
       const user = userCredential.user;
 
       // Create user profile in Firestore
-      await setDoc(doc(db, 'users', user.uid), {
+      const userData = {
         email: user.email,
         role: role,
         status: role === 'teacher' ? 'pending' : 'active',
         createdAt: new Date().toISOString(),
-      });
+      };
+
+      // Create the user document
+      await setDoc(doc(db, 'users', user.uid), userData);
+
+      // If it's a teacher account, sign them out immediately
+      if (role === 'teacher') {
+        await signOut(auth);
+      } else {
+        // Update current user state with the new data
+        setCurrentUser({ ...user, ...userData });
+      }
 
       return { success: true };
     } catch (error) {
@@ -50,14 +113,22 @@ export function AuthProvider({ children }) {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         
-        // Check if teacher account is pending
-        if (userData.role === 'teacher' && userData.status === 'pending') {
+        // Check if teacher account is pending or rejected
+        if (userData.role === 'teacher' && userData.status !== 'active') {
           await signOut(auth);
-          return { success: false, error: 'Your teacher account is pending approval.' };
+          const message = userData.status === 'pending' 
+            ? 'Your teacher account is pending approval.' 
+            : 'Your teacher account has been rejected.';
+          return { success: false, error: message };
         }
+        
+        // Update current user state
+        const updatedUser = { ...user, ...userData };
+        setCurrentUser(updatedUser);
+        return { success: true, user: updatedUser };
       }
 
-      return { success: true };
+      return { success: true, user };
     } catch (error) {
       console.error('Login error:', error);
       return { success: false, error: error.message };
@@ -66,93 +137,93 @@ export function AuthProvider({ children }) {
 
   async function loginWithGoogle(role = 'student') {
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({
-        prompt: 'select_account'
-      });
+      // Use the configured provider from firebase.js
+      const { googleProvider } = await import('../config/firebase');
       
-      // Create the popup immediately when the function is called
-      const userCredential = await signInWithPopup(auth, provider)
-        .catch((error) => {
-          if (error.code === 'auth/popup-blocked') {
-            throw new Error('Please allow popups for this website to sign in with Google');
-          }
-          throw error;
-        });
-
-      if (!userCredential) {
-        return { success: false, error: 'Google sign-in was cancelled' };
-      }
-
+      const userCredential = await signInWithPopup(auth, googleProvider);
       const user = userCredential.user;
 
       // Check if user exists in Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
       
       if (!userDoc.exists()) {
         // Create new user profile
-        await setDoc(doc(db, 'users', user.uid), {
+        const userData = {
           email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
           role: role,
           status: role === 'teacher' ? 'pending' : 'active',
           createdAt: new Date().toISOString(),
-        });
+        };
+        
+        await setDoc(userRef, userData);
+
+        // If it's a teacher account, sign them out immediately
+        if (role === 'teacher') {
+          await signOut(auth);
+          return { 
+            success: false, 
+            error: 'Your teacher account has been created and is pending approval.' 
+          };
+        }
+
+        // Update current user state
+        setCurrentUser({ ...user, ...userData });
+        return { success: true, user: { ...user, ...userData } };
       } else {
         const userData = userDoc.data();
-        // Check if teacher account is pending
-        if (userData.role === 'teacher' && userData.status === 'pending') {
+        
+        // Check if teacher account is pending or rejected
+        if (userData.role === 'teacher' && userData.status !== 'active') {
           await signOut(auth);
-          return { success: false, error: 'Your teacher account is pending approval.' };
+          const message = userData.status === 'pending' 
+            ? 'Your teacher account is pending approval.' 
+            : 'Your teacher account has been rejected.';
+          return { success: false, error: message };
         }
-      }
 
-      return { success: true, user: { ...user, role: role } };
+        // Update user data with latest Google info
+        const updatedUserData = {
+          ...userData,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          lastLoginAt: new Date().toISOString()
+        };
+        
+        // Update Firestore
+        await updateDoc(userRef, updatedUserData);
+
+        // Update current user state
+        const updatedUser = { ...user, ...updatedUserData };
+        setCurrentUser(updatedUser);
+        return { success: true, user: updatedUser };
+      }
     } catch (error) {
       console.error('Google login error:', error);
-      return { 
-        success: false, 
-        error: error.message || 'Failed to sign in with Google'
-      };
-    }
-  }
-
-  async function logout() {
-    try {
-      await signOut(auth);
-      return { success: true };
-    } catch (error) {
-      console.error('Logout error:', error);
+      if (error.code === 'auth/popup-blocked') {
+        return { 
+          success: false, 
+          error: 'Please allow popups for this website to sign in with Google' 
+        };
+      }
       return { success: false, error: error.message };
     }
   }
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // Get user profile from Firestore
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setCurrentUser({ ...user, ...userData });
-        } else {
-          setCurrentUser(user);
-        }
-      } else {
-        setCurrentUser(null);
-      }
-      setLoading(false);
-    });
-
-    return unsubscribe;
-  }, []);
+  async function logout() {
+    await signOut(auth);
+    setCurrentUser(null);
+  }
 
   const value = {
     currentUser,
+    loading,
     signup,
     login,
-    loginWithGoogle,
     logout,
-    loading
+    loginWithGoogle
   };
 
   return (
@@ -161,3 +232,5 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
+
+export default AuthProvider;

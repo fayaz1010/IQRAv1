@@ -5,89 +5,368 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserData().role == 'admin' || request.auth.token.role == 'admin');
     }
 
     function isTeacher() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserData().role == 'teacher' || request.auth.token.role == 'teacher');
     }
 
     function isStudent() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserData().role == 'student' || request.auth.token.role == 'student');
     }
 
     function isParent() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent';
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'parent';
     }
-    
+
+    function isTeacherOfClass(classId) {
+      return isTeacher() && 
+        exists(/databases/$(database)/documents/classes/$(classId)) &&
+        get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid;
+    }
+
+    function isStudentInClass(classId) {
+      return isStudent() &&
+        exists(/databases/$(database)/documents/classes/$(classId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/classes/$(classId)).data.studentIds;
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Helper functions to check session access
+    function isTeacherOfSession(sessionData) {
+      return isTeacher() && sessionData.teacherId == request.auth.uid;
+    }
+
+    function isStudentInSession(sessionData) {
+      return isStudent() && request.auth.uid in sessionData.studentProgress;
+    }
+
+    function isParentOfStudentInSession(sessionData) {
+      return isParent() && 
+        getUserData().children.hasAny(sessionData.studentProgress.keys());
+    }
+
+    function hasChild(progress) {
+      return getUserData().children.hasAny(progress.keys());
+    }
+
+    function getUpdatedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
     // Users collection
     match /users/{userId} {
-      // Allow users to read their own document
       allow read: if isAuthenticated() && (
-        request.auth.uid == userId || 
-        isAdmin()
-      );
-      
-      // Allow users to create their own document
-      allow create: if isAuthenticated() && 
-        request.auth.uid == userId &&
-        request.resource.data.role in ['student', 'teacher'] &&
-        (!request.resource.data.keys().hasAny(['isAdmin', 'customClaims']));
-      
-      // Allow users to update their own document
-      allow update: if isAuthenticated() && (
-        // Admin can update any user
+        request.auth.uid == userId ||
         isAdmin() ||
-        // Users can update their own non-sensitive fields
-        (request.auth.uid == userId &&
-         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['displayName', 'photoURL', 'settings']))
+        isTeacher() ||
+        isStudent() ||  
+        (isParent() && userId in getUserData().children)
       );
+
+      allow create: if isAuthenticated() &&
+        request.auth.uid == userId &&
+        request.resource.data.role in ['student', 'teacher', 'parent'] &&
+        (!request.resource.data.keys().hasAny(['isAdmin', 'customClaims']));
+
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (request.auth.uid == userId &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isAdmin', 'customClaims']))
+      );
+
       allow delete: if isAdmin();
     }
 
     // Classes collection
     match /classes/{classId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isTeacher() || isAdmin();
-      
-      // Allow students to read their enrolled classes
-      match /enrollments/{userId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow write: if isTeacher() || isAdmin();
+      // Teachers and admins can create classes
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin'] &&
+        request.resource.data.teacherId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['name', 'teacherId']) &&
+        request.resource.data.name is string &&
+        request.resource.data.teacherId is string &&
+        (!('description' in request.resource.data) || request.resource.data.description is string) &&
+        (!('courseId' in request.resource.data) || request.resource.data.courseId == null ||
+          exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))) &&
+        (!('studentIds' in request.resource.data) || request.resource.data.studentIds == null ||
+          (request.resource.data.studentIds is list && request.resource.data.studentIds.size() <= 100)) &&
+        (!('createdAt' in request.resource.data) || request.resource.data.createdAt is string) &&
+        (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is string);
+
+      // Allow read access for teachers, admins, and enrolled students
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && resource.data.studentIds.hasAny([request.auth.uid]))
+      );
+
+      // Teachers can update their own classes
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(classId)
+      ) && 
+        request.resource.data.keys().hasAll(['name', 'teacherId']) &&
+        request.resource.data.teacherId == resource.data.teacherId &&
+        request.resource.data.name is string &&
+        (!('description' in request.resource.data) || request.resource.data.description is string) &&
+        (!('studentIds' in request.resource.data) || request.resource.data.studentIds == null || 
+          (request.resource.data.studentIds is list && request.resource.data.studentIds.size() <= 100)) &&
+        (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is string);
+
+      // Teachers can delete their own classes
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(classId)
+      );
+
+      // Progress subcollection
+      match /progress/{userId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId) ||
+          request.auth.uid == userId
+        );
+        
+        allow create, update: if isAuthenticated() && (
+          isTeacherOfClass(classId) ||
+          request.auth.uid == userId
+        );
       }
+
+      // Recordings subcollection
+      match /recordings/{recordingId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId) ||
+          isStudentInClass(classId)
+        );
+        
+        allow create: if isAuthenticated() && 
+          isStudentInClass(classId) &&
+          request.resource.data.studentId == request.auth.uid &&
+          request.resource.data.size <= 5 * 1024 * 1024;  // 5MB limit
+        
+        allow delete: if isAuthenticated() && (
+          isTeacherOfClass(classId) ||
+          (isStudentInClass(classId) && resource.data.studentId == request.auth.uid)
+        );
+      }
+
+      // Sessions subcollection
+      match /sessions/{sessionId} {
+        allow create: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId)
+        ) &&
+        request.resource.data.keys().hasAll(['startTime', 'status']) &&
+        request.resource.data.startTime is string &&
+        request.resource.data.status in ['active', 'completed', 'cancelled'] &&
+        (!('endTime' in request.resource.data) || request.resource.data.endTime is string) &&
+        (!('meetLink' in request.resource.data) || request.resource.data.meetLink is string) &&
+        (!('studentProgress' in request.resource.data) || request.resource.data.studentProgress is map);
+
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId) ||
+          isStudentInClass(classId)
+        );
+
+        allow update: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId) ||
+          (isStudentInClass(classId) && (
+            // Student can only update specific fields
+            getUpdatedKeys().hasOnly(['attendees']) ||
+            getUpdatedKeys().hasOnly(['studentStatus']) ||
+            getUpdatedKeys().hasOnly(['lastActivity']) ||
+            getUpdatedKeys().hasOnly(['attendees', 'studentStatus']) ||
+            getUpdatedKeys().hasOnly(['attendees', 'lastActivity']) ||
+            getUpdatedKeys().hasOnly(['studentStatus', 'lastActivity']) ||
+            getUpdatedKeys().hasOnly(['attendees', 'studentStatus', 'lastActivity']) ||
+            getUpdatedKeys().hasOnly(['status'])
+          ))
+        );
+
+        allow delete: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacherOfClass(classId)
+        );
+      }
+    }
+
+    // Schedules collection
+    match /schedules/{scheduleId} {
+      allow create: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin']) &&
+        exists(/databases/$(database)/documents/classes/$(request.resource.data.classId)) &&
+        get(/databases/$(database)/documents/classes/$(request.resource.data.classId)).data.teacherId == request.auth.uid;
+      
+      allow read: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' && resource.data.teacherId == request.auth.uid) ||
+          (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student' && 
+            exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+            request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+          )
+        );
+      
+      allow update: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
+      
+      allow delete: if isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher' && resource.data.teacherId == request.auth.uid)
+        );
+    }
+
+    // Sessions collection
+    match /sessions/{sessionId} {
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(request.resource.data.classId)
+      );
+
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds)
+      );
+
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(resource.data.classId) ||
+        (isStudent() && exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds && (
+          // Allow students to update these fields
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentProgress']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['drawings']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentStatus']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastActivity']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees', 'studentStatus']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees', 'lastActivity']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentStatus', 'lastActivity']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees', 'studentStatus', 'lastActivity'])
+        ))
+      );
+
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacherOfClass(resource.data.classId)
+      );
+
+      // Allow access to session drawings
+      match /drawings/{drawingId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          (isTeacher() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.teacherId == request.auth.uid) ||
+          (isStudent() && request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentProgress)
+        );
+
+        allow write: if isAuthenticated() && (
+          isAdmin() ||
+          (isTeacher() && get(/databases/$(database)/documents/sessions/$(sessionId)).data.teacherId == request.auth.uid) ||
+          (isStudent() && 
+            request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.studentProgress &&
+            request.resource.data.studentId == request.auth.uid
+          )
+        );
+      }
+    }
+
+    // Drawings collection
+    match /drawings/{drawingId} {
+      allow read: if isAuthenticated() &&
+        (isTeacherOfClass(resource.data.classId) || 
+         isStudentInClass(resource.data.classId) ||
+         (isStudent() && resource.data.studentId == request.auth.uid));
+      
+      allow create, update: if isAuthenticated() &&
+        (isTeacherOfClass(request.resource.data.classId) || 
+         (isStudent() && request.resource.data.studentId == request.auth.uid));
+      
+      allow delete: if isAuthenticated() &&
+        (isTeacherOfClass(resource.data.classId) || 
+         (isStudent() && resource.data.studentId == request.auth.uid));
     }
 
     // Course materials collection
     match /materials/{materialId} {
-      allow read: if true; // Allow public read for free content
+      allow read: if true;
       allow create: if isTeacher() || isAdmin();
       allow update: if isTeacher() || isAdmin();
       allow delete: if isAdmin();
     }
 
+    // Courses collection
+    match /courses/{courseId} {
+      // Allow read access for all authenticated users
+      allow read: if isAuthenticated();
+      
+      // Only teachers and admins can create courses
+      allow create: if isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['teacher', 'admin'] &&
+        request.resource.data.teacherId == request.auth.uid;
+      
+      // Teachers can update their own courses, admins can update any course
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      );
+      
+      // Only admins and course owners can delete courses
+      allow delete: if isAuthenticated() && (
+        isAdmin() ||
+        (isTeacher() && resource.data.teacherId == request.auth.uid)
+      );
+    }
+
     // Student progress collection
     match /progress/{progressId} {
       allow read: if isAuthenticated() && (
-        isOwner(resource.data.studentId) || 
+        isOwner(resource.data.studentId) ||
         resource.data.parentId == request.auth.uid ||
-        isTeacher() || 
+        isTeacher() ||
         isAdmin()
       );
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        isOwner(resource.data.studentId) || 
-        isTeacher() || 
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isOwner(resource.data.studentId) ||
+        isTeacher() ||
         isAdmin()
       );
       allow delete: if isAdmin();
@@ -97,7 +376,7 @@ service cloud.firestore {
     match /assignments/{assignmentId} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isTeacher() || isAdmin();
-      
+
       // Allow students to submit their assignments
       match /submissions/{userId} {
         allow read: if isAuthenticated() && request.auth.uid == userId;
@@ -105,11 +384,16 @@ service cloud.firestore {
       }
     }
 
+    // Meet credentials collection
+    match /meetCredentials/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
     // Parent-Student relationships
     match /parent-student/{relationId} {
-      allow read: if isSignedIn() && (
-        isOwner(resource.data.parentId) || 
-        isOwner(resource.data.studentId) || 
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.parentId) ||
+        isOwner(resource.data.studentId) ||
         isAdmin()
       );
       allow create: if isParent() || isAdmin();
@@ -121,6 +405,74 @@ service cloud.firestore {
     match /free-content/{contentId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Iqra books collection
+    match /iqra-books/{bookId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Student progress collection
+    match /student-progress/{progressId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacher() || isAdmin();
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // Messages collection
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.recipientId == request.auth.uid ||
+        resource.data.senderId == request.auth.uid
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Sessions collection - Additional rules for queries
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        isTeacher() ||
+        (isStudent() && (
+          // Allow reading sessions for classes the student is enrolled in
+          exists(/databases/$(database)/documents/classes/$(resource.data.classId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.studentIds
+        ))
+      );
+      
+      // Allow students to read their attendance and feedback
+      match /attendance/{userId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacher() ||
+          request.auth.uid == userId
+        );
+      }
+
+      // Allow students to read and write their feedback
+      match /feedback/{userId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          isTeacher() ||
+          request.auth.uid == userId
+        );
+        allow write: if isAuthenticated() && request.auth.uid == userId;
+      }
     }
   }
 }

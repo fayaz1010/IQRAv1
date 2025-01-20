@@ -1,8 +1,25 @@
-import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, getFirestore } from 'firebase/firestore';
-import { Box, Grid } from '@mui/material';
+import { useState, useEffect, useCallback } from 'react';
+import { collection, query, where, getDocs, getFirestore, onSnapshot } from 'firebase/firestore';
+import { 
+  Box, 
+  Grid, 
+  Dialog, 
+  DialogTitle, 
+  DialogContent, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  ListItemSecondaryAction, 
+  Button, 
+  Typography, 
+  IconButton,
+  Card,
+  CardActionArea 
+} from '@mui/material';
 import StatsCard from './StatsCard';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSession } from '../../features/iqra/contexts/SessionContext';
+import { Close as CloseIcon, VideoCall as VideoCallIcon } from '@mui/icons-material';
 import {
   People as UsersIcon,
   School as ClassesIcon,
@@ -10,6 +27,8 @@ import {
   AccessTime as TimeIcon,
   Pending as PendingIcon,
   CheckCircle as HealthIcon,
+  TrendingUp as ProgressIcon,
+  Group as StudentsIcon,
 } from '@mui/icons-material';
 
 const DashboardStats = () => {
@@ -22,193 +41,208 @@ const DashboardStats = () => {
     classesToday: 0,
     nextClass: '',
     assignments: 0,
+    totalStudents: 0,
+    averageProgress: 0,
   });
 
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const { currentUser } = useAuth();
+  const { joinSession } = useSession();
   const db = getFirestore();
-
-  const fetchAdminStats = async () => {
-    try {
-      // Fetch active users
-      const usersQuery = query(collection(db, 'users'), where('status', '==', 'active'));
-      const usersSnapshot = await getDocs(usersQuery);
-      const activeUsers = usersSnapshot.size;
-
-      // Fetch active classes
-      const classesQuery = query(collection(db, 'classes'), where('status', '==', 'active'));
-      const classesSnapshot = await getDocs(classesQuery);
-      const activeClasses = classesSnapshot.size;
-
-      // Fetch pending teacher approvals
-      const teachersQuery = query(collection(db, 'users'), 
-        where('role', '==', 'teacher'),
-        where('status', '==', 'pending')
-      );
-      const teachersSnapshot = await getDocs(teachersQuery);
-      const pendingApprovals = teachersSnapshot.size;
-
-      setStats(prev => ({
-        ...prev,
-        activeUsers,
-        activeClasses,
-        pendingApprovals,
-      }));
-    } catch (error) {
-      console.error('Error fetching admin stats:', error);
-    }
-  };
-
-  const fetchStudentStats = async () => {
-    try {
-      // Fetch student's progress
-      const progressQuery = query(
-        collection(db, 'progress'),
-        where('studentId', '==', currentUser.uid)
-      );
-      const progressSnapshot = await getDocs(progressQuery);
-      let totalProgress = 0;
-      progressSnapshot.forEach(doc => {
-        totalProgress += doc.data().progress || 0;
-      });
-      const averageProgress = progressSnapshot.size > 0 
-        ? Math.round((totalProgress / progressSnapshot.size) * 100) 
-        : 0;
-
-      // Fetch today's classes
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const classesQuery = query(
-        collection(db, 'classes'),
-        where('studentIds', 'array-contains', currentUser.uid),
-        where('date', '>=', today)
-      );
-      const classesSnapshot = await getDocs(classesQuery);
-      const classesToday = classesSnapshot.size;
-
-      // Find next class
-      let nextClass = '';
-      const now = new Date();
-      classesSnapshot.forEach(doc => {
-        const classData = doc.data();
-        if (classData.date?.toDate() > now) {
-          if (!nextClass || classData.date?.toDate() < nextClass) {
-            nextClass = classData.date?.toDate().toLocaleTimeString([], { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            });
-          }
-        }
-      });
-
-      // Fetch pending assignments
-      const assignmentsQuery = query(
-        collection(db, 'assignments'),
-        where('studentId', '==', currentUser.uid),
-        where('status', '==', 'pending')
-      );
-      const assignmentsSnapshot = await getDocs(assignmentsQuery);
-      const assignments = assignmentsSnapshot.size;
-
-      setStats(prev => ({
-        ...prev,
-        progress: averageProgress,
-        classesToday,
-        nextClass,
-        assignments,
-      }));
-    } catch (error) {
-      console.error('Error fetching student stats:', error);
-    }
-  };
 
   useEffect(() => {
     if (!currentUser) return;
 
-    if (currentUser.role === 'admin') {
-      fetchAdminStats();
-    } else if (currentUser.role === 'student') {
-      fetchStudentStats();
-    }
+    // Listen for active sessions
+    const sessionsRef = collection(db, 'sessions');
+    const activeSessionsQuery = query(
+      sessionsRef,
+      where('status', '==', 'active'),
+      where('studentIds', 'array-contains', currentUser.uid)
+    );
+
+    const unsubscribe = onSnapshot(activeSessionsQuery, async (snapshot) => {
+      console.log('Active sessions snapshot received:', snapshot.size);
+      const sessions = [];
+      for (const doc of snapshot.docs) {
+        const sessionData = doc.data();
+        // Get class details
+        const classRef = collection(db, 'classes');
+        const classDoc = await getDocs(query(classRef, where('id', '==', sessionData.classId)));
+        if (!classDoc.empty) {
+          const classData = classDoc.docs[0].data();
+          sessions.push({
+            id: doc.id,
+            classId: sessionData.classId,
+            className: classData.name,
+            ...sessionData
+          });
+        }
+      }
+      console.log('Processed active sessions:', sessions);
+      setActiveSessions(sessions);
+      setStats(prev => ({ ...prev, activeClasses: sessions.length }));
+    });
+
+    return () => unsubscribe();
   }, [currentUser]);
 
-  if (currentUser?.role === 'admin') {
-    return (
-      <Box sx={{ flexGrow: 1, p: 2 }}>
+  const handleJoinSession = async (session) => {
+    try {
+      await joinSession(session.id);
+      
+      // Open Google Meet if available
+      if (session.meet?.link) {
+        window.open(session.meet.link, '_blank');
+      }
+      setDialogOpen(false);
+    } catch (error) {
+      console.error('Error joining session:', error);
+    }
+  };
+
+  const handleActiveClassesClick = useCallback(() => {
+    console.log('Active classes card clicked');
+    setDialogOpen(true);
+  }, []);
+
+  const handleCloseDialog = useCallback(() => {
+    console.log('Dialog close clicked');
+    setDialogOpen(false);
+  }, []);
+
+  // Student dashboard stats
+  return (
+    <>
+      <Box sx={{ width: '100%' }}>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={6} md={3}>
+            <Box
+              onClick={handleActiveClassesClick}
+              sx={{ 
+                cursor: 'pointer',
+                '&:hover': {
+                  transform: 'scale(1.02)',
+                  transition: 'transform 0.2s ease-in-out'
+                }
+              }}
+            >
+              <StatsCard
+                title="Active Classes"
+                value={stats.activeClasses}
+                icon={<ClassesIcon />}
+                color="#2196f3"
+              />
+            </Box>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
             <StatsCard
-              title="Active Users"
-              value={stats.activeUsers}
-              icon={<UsersIcon />}
-              color="#2196f3"
+              title="Progress"
+              value={stats.progress}
+              icon={<ProgressIcon />}
+              color="#4caf50"
+              suffix="%"
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatsCard
-              title="Active Classes"
-              value={stats.activeClasses}
-              icon={<ClassesIcon />}
+              title="Classes Today"
+              value={stats.classesToday}
+              icon={<TimeIcon />}
               color="#ff9800"
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <StatsCard
-              title="Pending Approvals"
-              value={stats.pendingApprovals}
-              icon={<PendingIcon />}
+              title="Assignments"
+              value={stats.assignments}
+              icon={<AssignmentsIcon />}
               color="#f44336"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatsCard
-              title="System Health"
-              value={stats.systemHealth}
-              icon={<HealthIcon />}
-              color="#4caf50"
             />
           </Grid>
         </Grid>
       </Box>
-    );
-  }
 
-  return (
-    <Box sx={{ flexGrow: 1, p: 2 }}>
-      <Grid container spacing={3}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatsCard
-            title="Progress"
-            value={`${stats.progress}%`}
-            icon={<UsersIcon />}
-            color="#2196f3"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatsCard
-            title="Classes Today"
-            value={stats.classesToday}
-            icon={<ClassesIcon />}
-            color="#ff9800"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatsCard
-            title="Next Class"
-            value={stats.nextClass || 'No classes'}
-            icon={<TimeIcon />}
-            color="#4caf50"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatsCard
-            title="Assignments"
-            value={stats.assignments}
-            icon={<AssignmentsIcon />}
-            color="#f44336"
-          />
-        </Grid>
-      </Grid>
-    </Box>
+      <Dialog 
+        open={dialogOpen} 
+        onClose={handleCloseDialog}
+        maxWidth="sm"
+        fullWidth
+        sx={{ 
+          zIndex: 1500,
+          '& .MuiDialog-paper': {
+            margin: 2,
+            maxHeight: 'calc(100% - 64px)'
+          }
+        }}
+      >
+        <DialogTitle>
+          <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Typography variant="h6">Active Classes</Typography>
+            <IconButton onClick={handleCloseDialog} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          {activeSessions.length > 0 ? (
+            <List>
+              {activeSessions.map((session) => (
+                <ListItem
+                  key={session.id}
+                  sx={{
+                    mb: 1,
+                    borderRadius: 1,
+                    bgcolor: 'background.paper',
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
+                >
+                  <ListItemText
+                    primary={session.className}
+                    secondary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                        {session.meet?.link && (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 0.5,
+                              color: 'primary.main'
+                            }}
+                          >
+                            <VideoCallIcon fontSize="small" />
+                            Meet Available
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                  />
+                  <ListItemSecondaryAction>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={() => handleJoinSession(session)}
+                      startIcon={<VideoCallIcon />}
+                      size="small"
+                    >
+                      Join Now
+                    </Button>
+                  </ListItemSecondaryAction>
+                </ListItem>
+              ))}
+            </List>
+          ) : (
+            <Box py={2} textAlign="center">
+              <Typography color="text.secondary">
+                No active classes at the moment
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

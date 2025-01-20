@@ -1,5 +1,29 @@
 # IQRA Application - Pending Features and Enhancements
 
+## Iqra Books Integration Priority Tasks
+- [ ] Firebase Storage Setup
+  - Setup storage structure for PDFs and PNGs
+  - Implement access control rules
+  - Configure caching and optimization
+
+- [ ] Teaching Interface Development
+  - PNG page viewer component
+  - PDF reference viewer
+  - Page navigation system
+  - Teaching tools implementation
+
+- [ ] Progress Tracking System
+  - Student progress database schema
+  - Progress tracking components
+  - Analytics and reporting
+  - Performance monitoring
+
+- [ ] Teaching Materials Management
+  - Book and page organization
+  - Teaching notes system
+  - Custom exercises
+  - Resource versioning
+
 ## Authentication & User Management
 - [ ] Parent-Student Account Linking
   - Link multiple children to parent account
@@ -47,6 +71,85 @@
   - Google Calendar sync
   - Schedule reminders
   - Class notifications
+
+## Class Scheduling System Priority Tasks
+- [ ] Scheduling Interface Development
+  - Create scheduling wizard components
+  - Implement step-by-step scheduling flow
+  - Build teacher availability calendar
+  - Add conflict detection
+  - Develop schedule preview
+  
+- [ ] Google Services Integration
+  - Setup Google Calendar batch operations
+  - Implement Meet link generation
+  - Add calendar invite system
+  - Create email notification templates
+  
+- [ ] Database Schema Updates
+  - Schedule configuration collection
+  - Sessions collection
+  - Availability patterns collection
+  - Notification preferences
+  
+- [ ] Dashboard Enhancements
+  - Add upcoming classes widget
+  - Create schedule overview
+  - Implement quick actions
+  - Add notification center
+
+## Session History Enhancements
+
+### Export Features
+- [ ] Export session history to PDF/Excel
+- [ ] Generate comprehensive progress reports
+- [ ] Email reports to parents/teachers
+- [ ] Batch export functionality
+
+### Analytics
+- [ ] Implement progress charts
+- [ ] Track improvement over time
+- [ ] Compare student performance metrics
+- [ ] Visual representation of learning progress
+
+### Advanced Filtering
+- [ ] Filter sessions by book
+- [ ] Filter by rating range
+- [ ] Filter by specific feedback types
+- [ ] Advanced search with multiple criteria
+
+### Batch Actions
+- [ ] Bulk export sessions
+- [ ] Batch generate reports
+- [ ] Send multiple reports simultaneously
+- [ ] Schedule automated report generation
+
+## Google Meet Integration
+
+### Session Integration
+- [ ] Add Google Meet link generation for sessions
+- [ ] Automatic meeting scheduling
+- [ ] Email notifications with meeting links
+- [ ] Calendar integration for sessions
+
+### Schedule Integration
+- [ ] Add Google Meet links to scheduled classes
+- [ ] Automatic recurring meeting setup
+- [ ] Meeting reminder notifications
+- [ ] One-click join for students and teachers
+
+### Features
+- [ ] Screen sharing controls
+- [ ] Recording capabilities
+- [ ] Attendance tracking
+- [ ] Waiting room functionality
+- [ ] Meeting security settings
+
+### User Experience
+- [ ] Seamless meeting join experience
+- [ ] Meeting status indicators
+- [ ] Connection quality monitoring
+- [ ] Backup meeting links
 
 ## Parent Dashboard Features
 - [ ] Multi-Child Dashboard
